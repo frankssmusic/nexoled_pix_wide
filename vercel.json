@@ -1,0 +1,19 @@
+{
+  "headers": [
+    {
+      "source": "/pantalla",
+      "headers": [
+        { "key": "x-vercel-skip-challenge", "value": "1" }
+      ]
+    },
+    {
+      "source": "/pantalla/(.*)",
+      "headers": [
+        { "key": "x-vercel-skip-challenge", "value": "1" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
