@@ -462,38 +462,59 @@ export default function Admin() {
                       ))}
                     </div>
 
-                    {/* Controles */}
-                    <div className="label">Controles</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <Fila
-                        titulo="Descarga de fotos"
-                        detalle="El operador puede bajar las fotos aprobadas"
-                        activo={ev.descarga_habilitada}
-                        onToggle={() => actualizar(ev, { descarga_habilitada: !ev.descarga_habilitada },
-                          ev.descarga_habilitada ? "Descarga desactivada" : "Descarga activada")}
-                      />
-                      <Fila
-                        titulo={ev.evento_cerrado ? "Evento cerrado" : "Evento en vivo"}
-                        detalle={ev.evento_cerrado
-                          ? "Al reabrir se genera una clave nueva"
-                          : "Al cerrar expira la clave y se cierran las sesiones"}
-                        activo={ev.evento_cerrado}
-                        onToggle={() => alternarCerrado(ev)}
-                      />
-                    </div>
-
-                    {/* Acciones */}
-                    <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => descargarFotos(ev)}>
-                        <Icon.Download size={14} /> Descargar
-                      </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => borrarFotos(ev)}>
-                        <Icon.Trash size={14} /> Borrar fotos
-                      </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => eliminarEvento(ev)}>
-                        Eliminar evento
-                      </button>
-                    </div>
+                    {/* Controles — distintos según estado */}
+                    {ev.evento_cerrado ? (
+                      <>
+                        <div className="label">Acciones</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {/* Descarga directa desde admin para eventos cerrados */}
+                          <button className="btn btn-primary btn-block" onClick={() => descargarFotos(ev)}>
+                            <Icon.Download size={15} /> Descargar fotos aprobadas ({conteos[ev.id]?.approved || 0})
+                          </button>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => alternarCerrado(ev)}>
+                              <Icon.Unlock size={14} /> Reabrir evento
+                            </button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => borrarFotos(ev)}>
+                              <Icon.Trash size={14} /> Borrar fotos
+                            </button>
+                            <button className="btn btn-danger btn-sm" onClick={() => eliminarEvento(ev)}>
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="label">Controles</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <Fila
+                            titulo="Descarga de fotos"
+                            detalle="El operador puede bajar las fotos aprobadas"
+                            activo={ev.descarga_habilitada}
+                            onToggle={() => actualizar(ev, { descarga_habilitada: !ev.descarga_habilitada },
+                              ev.descarga_habilitada ? "Descarga desactivada" : "Descarga activada")}
+                          />
+                          <Fila
+                            titulo="Evento en vivo"
+                            detalle="Al cerrar expira la clave y se cierran las sesiones"
+                            activo={false}
+                            onToggle={() => alternarCerrado(ev)}
+                          />
+                        </div>
+                        <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => descargarFotos(ev)}>
+                            <Icon.Download size={14} /> Descargar
+                          </button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => borrarFotos(ev)}>
+                            <Icon.Trash size={14} /> Borrar fotos
+                          </button>
+                          <button className="btn btn-danger btn-sm" onClick={() => eliminarEvento(ev)}>
+                            Eliminar evento
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
