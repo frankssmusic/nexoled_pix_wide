@@ -496,9 +496,11 @@ export default function Admin() {
                               ev.descarga_habilitada ? "Descarga desactivada" : "Descarga activada")}
                           />
                           <Fila
-                            titulo="Evento en vivo"
-                            detalle="Al cerrar expira la clave y se cierran las sesiones"
-                            activo={false}
+                            titulo={ev.evento_cerrado ? "Evento cerrado" : "Evento en vivo"}
+                            detalle={ev.evento_cerrado
+                              ? "Al reabrir se genera una clave nueva"
+                              : "Al cerrar expira la clave y se cierran las sesiones"}
+                            activo={ev.evento_cerrado}
                             onToggle={() => alternarCerrado(ev)}
                           />
                         </div>
