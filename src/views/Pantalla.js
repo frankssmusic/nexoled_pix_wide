@@ -1,11 +1,26 @@
 import { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { supabase } from "../supabase";
 import { urlsDe } from "../lib";
 import { Logo, Vacio } from "../components/UI";
 
-export default function Pantalla({ evento, fotos }) {
+export default function Pantalla({ evento: eventoInicial, fotos }) {
+  const [evento, setEvento] = useState(eventoInicial);
   const aprobadas = fotos.filter((f) => f.status === "approved");
   const urlSubida = evento ? urlsDe(evento.slug).subir : "";
+
+  /* Polling: cada 15s App.js ya refresca las fotos.
+     Acá además consultamos el estado del evento para detectar cierre en tiempo real */
+  useEffect(() => {
+    if (!eventoInicial?.id) return;
+    const t = setInterval(async () => {
+      const { data } = await supabase
+        .from("eventos").select("evento_cerrado, nombre, slug")
+        .eq("id", eventoInicial.id).single();
+      if (data) setEvento(data);
+    }, 15000);
+    return () => clearInterval(t);
+  }, [eventoInicial?.id]);
 
   /* Intercala el QR: si hay pocas fotos, tras cada una; si hay muchas, cada 6 */
   const slides = (() => {
@@ -36,12 +51,33 @@ export default function Pantalla({ evento, fotos }) {
     return <Vacio titulo="Evento no encontrado" detalle="Revisa la dirección de la pantalla." />;
   }
 
+  /* Evento cerrado: pantalla de cierre limpia */
+  if (evento.evento_cerrado) {
+    return (
+      <div style={{
+        position: "fixed", inset: 0, background: "#000",
+        display: "flex", flexDirection: "column", alignItems: "center",
+        justifyContent: "center", gap: 24,
+      }}>
+        <Logo size={22} sub={false} />
+        <div style={{ textAlign: "center" }}>
+          <div className="display" style={{ fontSize: 28, color: "var(--text-dim)", marginBottom: 10 }}>
+            {evento.nombre}
+          </div>
+          <div className="eyebrow" style={{ color: "var(--text-faint)" }}>
+            Evento finalizado
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       position: "fixed", inset: 0, background: "#000",
       display: "flex", flexDirection: "column",
     }}>
-      {/* Barra superior: mínima, alto contraste para verse a distancia */}
+      {/* Barra superior */}
       <div style={{
         height: 54, flexShrink: 0, background: "#000",
         borderBottom: "1px solid rgba(255,255,255,0.06)",

@@ -75,6 +75,12 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
   const descargar = async () => {
     const aprobadas = fotos.filter((f) => f.status === "approved");
     if (aprobadas.length === 0) { setToast("No hay fotos aprobadas todavía"); return; }
+    // Verificar en tiempo real que la descarga sigue habilitada
+    const { data: evActual } = await supabase.from("eventos").select("descarga_habilitada, evento_cerrado").eq("id", evento.id).single();
+    if (!evActual?.descarga_habilitada || evActual?.evento_cerrado) {
+      setToast("El administrador deshabilitó la descarga");
+      return;
+    }
     setDescargando(true);
     try {
       const JSZip = await cargarJSZip();

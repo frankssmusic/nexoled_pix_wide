@@ -33,6 +33,13 @@ export default function Asistente({ evento }) {
     setEnviando(true);
     setError("");
     try {
+      // Verificar en tiempo real que el evento sigue abierto
+      const { data: evActual } = await supabase.from("eventos").select("evento_cerrado").eq("id", evento.id).single();
+      if (evActual?.evento_cerrado) {
+        setError("Este evento ya cerró. No se pueden subir más fotos.");
+        setEnviando(false);
+        return;
+      }
       const comprimida = await comprimirImagen(file);
       const filename = `${evento.id}_${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage

@@ -291,9 +291,14 @@ export default function Admin() {
         </Modal>
       )}
 
-      <header style={{ marginBottom: 24 }}>
-        <Logo size={24} />
-        <div className="eyebrow" style={{ marginTop: 10 }}>Panel de administración</div>
+      <header style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <Logo size={24} />
+          <div className="eyebrow" style={{ marginTop: 10 }}>Panel de administración</div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={cargarEventos} title="Actualizar estado">
+          <Icon.Refresh size={16} /> Actualizar
+        </button>
       </header>
 
       {/* Crear evento */}
