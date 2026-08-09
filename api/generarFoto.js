@@ -23,7 +23,7 @@ const { createClient } = require('@supabase/supabase-js');
 // ---------------------------------------------------------------------------
 const PROMPTS_POR_MODO = {
   game_of_thrones:
-    "Close-up POV selfie perspective, the figure stands impossibly close to the camera, face bathed in soft, cinematic light — fair or pale skin, delicate features, neutral yet warmly confident expression, eyes slightly tilted upward as if gazing into a hidden power. They wear dark, heavy medieval robes with luxurious fur trim along the collar and cuffs, layered beneath a hooded cloak that drapes naturally, textured and worn with elegant, faded embroidery. Gender-neutral, androgynous features suggest non-binary presence — smooth, balanced, without overt gender cues. To their right, a colossal dragon head dominates the frame — massive, ancient, and unblinking — one glowing amber eye pulses gently, radiating mystical energy. Its scales shimmer with moisture, dark and intricately textured, smoke curling richly from its nostrils. Behind them, a blurred stone hall with monumental arches, flickering torchlight, and deep shadows — warm orange glows contrast with cold, stone textures — amplifying the tension between the human and the primordial beast. No armor, no weapons — just powerful, unguarded presence. Cinematic, photorealistic, hyper-detailed, Game of Thrones-inspired atmosphere — dynamic lighting, shallow depth of field, emphasizing scale, intimacy, and ancestral weight.",
+    "Close-up POV selfie perspective, the figure stands impossibly close to the camera, face bathed in soft, cinematic light, looking directly into the camera — fair or pale skin, delicate features, neutral yet warmly confident expression. They wear dark, heavy medieval robes with luxurious fur trim along the collar and cuffs, layered beneath a hooded cloak that drapes naturally, textured and worn with elegant, faded embroidery. Gender-neutral, androgynous features suggest non-binary presence — smooth, balanced, without overt gender cues. To their right, a colossal dragon head dominates the frame — massive, ancient, and unblinking, also looking directly into the camera alongside them — one glowing amber eye pulses gently, radiating mystical energy. Its scales shimmer with moisture, dark and intricately textured, smoke curling richly from its nostrils. Behind them, the Iron Throne room: a towering hall with rows of ancient swords fused into a massive black iron throne, tall narrow windows casting dramatic shafts of light across worn stone floors, monumental arches, flickering torchlight, and deep shadows — warm orange glows contrast with cold, dark iron and stone textures — amplifying the tension between the human and the primordial beast within the seat of power. No armor, no weapons — just powerful, unguarded presence. Cinematic, photorealistic, hyper-detailed, Game of Thrones-inspired atmosphere — dynamic lighting, shallow depth of field, emphasizing scale, intimacy, and ancestral weight.",
 };
 
 const COSTO_USD_POR_FOTO = 0.045;
@@ -110,6 +110,7 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({
           images: [fotoUrl],
           prompt: prompt,
+          aspect_ratio: '9:16',
         }),
       }
     );
