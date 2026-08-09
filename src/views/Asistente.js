@@ -18,6 +18,7 @@ export default function Asistente({ evento }) {
   const [iaLista, setIaLista] = useState(false);
 
   const fileRef = useRef();
+  const fileRefIA = useRef();
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
 
@@ -68,16 +69,37 @@ export default function Asistente({ evento }) {
     }
   };
 
+  // --- Handler nuevo: botón "FUNphoto IA" en la pantalla principal ---
+  // Toma la foto igual que el flujo normal, pero en vez de ir a "revisar",
+  // dispara directo la generación con IA.
+  const tomarArchivoIA = (f) => {
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      setError("Ese archivo no es una imagen. Elige una foto.");
+      return;
+    }
+    setError("");
+    setFile(f);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPreview(e.target.result);
+      setStep("ia");
+      probarGameOfThrones(f);
+    };
+    reader.readAsDataURL(f);
+  };
+
   // --- Función nueva, solo para la prueba de Funny Photo IA ---
   // Sube la foto original a Supabase (para tener una URL pública que WaveSpeed
   // pueda leer) y luego llama a api/generarFoto.js con el modo Game of Thrones.
-  const probarGameOfThrones = async () => {
-    if (!file || !evento) return;
+  const probarGameOfThrones = async (fileParaIA) => {
+    const fileAUsar = fileParaIA || file;
+    if (!fileAUsar || !evento) return;
     setGenerandoIA(true);
     setErrorIA("");
     setIaLista(false);
     try {
-      const comprimida = await comprimirImagen(file);
+      const comprimida = await comprimirImagen(fileAUsar);
       const filenameOriginal = `original_${evento.id}_${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
         .from("fotos")
@@ -201,6 +223,88 @@ export default function Asistente({ evento }) {
               </div>
             )}
 
+            {/* ---- Prueba: botón FUNphoto IA en pantalla principal ---- */}
+            {/* Sin diseño final todavía — solo para validar el flujo completo */}
+            <div style={{
+              marginTop: 26, paddingTop: 20,
+              borderTop: "1px dashed var(--border)", textAlign: "center",
+            }}>
+              <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
+                Zona de prueba
+              </div>
+              <label className="btn btn-ghost btn-block" style={{ cursor: "pointer" }}>
+                FUNphoto IA — Game of Thrones
+                <input
+                  ref={fileRefIA}
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => tomarArchivoIA(e.target.files[0])}
+                  style={{ display: "none" }}
+                />
+              </label>
+            </div>
+
+            <Banner />
+          </div>
+        )}
+
+        {step === "ia" && (
+          <div className="rise">
+            <div className="card" style={{ textAlign: "center" }}>
+              {preview && (
+                <img
+                  src={preview}
+                  alt="Tu foto"
+                  style={{
+                    width: "100%", borderRadius: "var(--r-md)", aspectRatio: "4/3",
+                    objectFit: "cover", marginBottom: 18, border: "1px solid var(--border)",
+                  }}
+                />
+              )}
+
+              {generandoIA && (
+                <>
+                  <div className="display" style={{ fontSize: 17, marginBottom: 8 }}>
+                    Generando con IA…
+                  </div>
+                  <p style={{ color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6 }}>
+                    Puede tardar hasta 45 segundos. No cierres esta pantalla.
+                  </p>
+                </>
+              )}
+
+              {!generandoIA && iaLista && (
+                <>
+                  <div style={{
+                    width: 56, height: 56, borderRadius: "50%", background: "var(--tint-cyan)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    margin: "0 auto 18px",
+                  }}>
+                    <Icon.Check size={26} color="var(--cyan)" />
+                  </div>
+                  <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>
+                    Foto IA generada
+                  </h2>
+                  <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, marginBottom: 22 }}>
+                    Revísala en el panel de moderación del evento.
+                  </p>
+                  <button className="btn btn-ghost btn-block" onClick={reiniciar}>
+                    Probar otra foto
+                  </button>
+                </>
+              )}
+
+              {!generandoIA && errorIA && (
+                <>
+                  <div className="chip chip-danger" style={{ marginBottom: 18, width: "100%", justifyContent: "center" }}>
+                    {errorIA}
+                  </div>
+                  <button className="btn btn-ghost btn-block" onClick={reiniciar}>
+                    Volver a intentar
+                  </button>
+                </>
+              )}
+            </div>
             <Banner />
           </div>
         )}
@@ -252,37 +356,6 @@ export default function Asistente({ evento }) {
                 <button className="btn btn-primary" style={{ flex: 1 }} onClick={enviar} disabled={enviando}>
                   {enviando ? "Enviando…" : "Enviar foto"}
                 </button>
-              </div>
-
-              {/* ---- Bloque de prueba: Funny Photo IA (Modo Game of Thrones) ---- */}
-              {/* Esto es solo para probar el flujo completo. No tiene diseño final todavía. */}
-              <div style={{
-                marginTop: 22, paddingTop: 18,
-                borderTop: "1px dashed var(--border)",
-              }}>
-                <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10, textAlign: "center" }}>
-                  Zona de prueba — FUNphoto IA
-                </div>
-
-                <button
-                  className="btn btn-ghost btn-block"
-                  onClick={probarGameOfThrones}
-                  disabled={generandoIA}
-                >
-                  {generandoIA ? "Generando con IA… (hasta 45s)" : "Probar Game of Thrones (IA)"}
-                </button>
-
-                {errorIA && (
-                  <div className="chip chip-danger" style={{ marginTop: 12, width: "100%", justifyContent: "center" }}>
-                    {errorIA}
-                  </div>
-                )}
-
-                {iaLista && (
-                  <div className="chip" style={{ marginTop: 12, width: "100%", justifyContent: "center" }}>
-                    Foto IA generada — revísala en el panel de moderación
-                  </div>
-                )}
               </div>
             </div>
             <Banner />
