@@ -11,6 +11,12 @@ export default function Asistente({ evento }) {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
   const [autorizada, setAutorizada] = useState(true);
+
+  // --- Estado nuevo, solo para la prueba de Funny Photo IA ---
+  const [generandoIA, setGenerandoIA] = useState(false);
+  const [errorIA, setErrorIA] = useState("");
+  const [iaLista, setIaLista] = useState(false);
+
   const fileRef = useRef();
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
@@ -62,9 +68,54 @@ export default function Asistente({ evento }) {
     }
   };
 
+  // --- Función nueva, solo para la prueba de Funny Photo IA ---
+  // Sube la foto original a Supabase (para tener una URL pública que WaveSpeed
+  // pueda leer) y luego llama a api/generarFoto.js con el modo Game of Thrones.
+  const probarGameOfThrones = async () => {
+    if (!file || !evento) return;
+    setGenerandoIA(true);
+    setErrorIA("");
+    setIaLista(false);
+    try {
+      const comprimida = await comprimirImagen(file);
+      const filenameOriginal = `original_${evento.id}_${Date.now()}.jpg`;
+      const { error: upErr } = await supabase.storage
+        .from("fotos")
+        .upload(filenameOriginal, comprimida, { contentType: "image/jpeg" });
+      if (upErr) throw upErr;
+
+      const { data: urlOriginal } = supabase.storage
+        .from("fotos")
+        .getPublicUrl(filenameOriginal);
+
+      const respuesta = await fetch("/api/generarFoto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fotoUrl: urlOriginal.publicUrl,
+          modo: "game_of_thrones",
+          eventoId: evento.id,
+        }),
+      });
+
+      const resultado = await respuesta.json();
+
+      if (!respuesta.ok) {
+        throw new Error(resultado?.error || "Error generando la foto con IA");
+      }
+
+      setIaLista(true);
+    } catch (err) {
+      setErrorIA(err.message || "No se pudo generar la foto con IA. Intenta de nuevo.");
+    } finally {
+      setGenerandoIA(false);
+    }
+  };
+
   const reiniciar = () => {
     setStep("subir"); setPreview(null); setFile(null);
     setAutorizada(true); setError("");
+    setGenerandoIA(false); setErrorIA(""); setIaLista(false);
   };
 
   if (!evento) {
@@ -201,6 +252,37 @@ export default function Asistente({ evento }) {
                 <button className="btn btn-primary" style={{ flex: 1 }} onClick={enviar} disabled={enviando}>
                   {enviando ? "Enviando…" : "Enviar foto"}
                 </button>
+              </div>
+
+              {/* ---- Bloque de prueba: Funny Photo IA (Modo Game of Thrones) ---- */}
+              {/* Esto es solo para probar el flujo completo. No tiene diseño final todavía. */}
+              <div style={{
+                marginTop: 22, paddingTop: 18,
+                borderTop: "1px dashed var(--border)",
+              }}>
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10, textAlign: "center" }}>
+                  Zona de prueba — FUNphoto IA
+                </div>
+
+                <button
+                  className="btn btn-ghost btn-block"
+                  onClick={probarGameOfThrones}
+                  disabled={generandoIA}
+                >
+                  {generandoIA ? "Generando con IA… (hasta 45s)" : "Probar Game of Thrones (IA)"}
+                </button>
+
+                {errorIA && (
+                  <div className="chip chip-danger" style={{ marginTop: 12, width: "100%", justifyContent: "center" }}>
+                    {errorIA}
+                  </div>
+                )}
+
+                {iaLista && (
+                  <div className="chip" style={{ marginTop: 12, width: "100%", justifyContent: "center" }}>
+                    Foto IA generada — revísala en el panel de moderación
+                  </div>
+                )}
               </div>
             </div>
             <Banner />
