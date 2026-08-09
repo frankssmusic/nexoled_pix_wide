@@ -16,6 +16,7 @@ export default function Asistente({ evento }) {
   const [generandoIA, setGenerandoIA] = useState(false);
   const [errorIA, setErrorIA] = useState("");
   const [iaLista, setIaLista] = useState(false);
+  const [urlResultadoIA, setUrlResultadoIA] = useState(null);
 
   const fileRef = useRef();
   const fileRefIA = useRef();
@@ -98,6 +99,7 @@ export default function Asistente({ evento }) {
     setGenerandoIA(true);
     setErrorIA("");
     setIaLista(false);
+    setUrlResultadoIA(null);
     try {
       const comprimida = await comprimirImagen(fileAUsar);
       const filenameOriginal = `original_${evento.id}_${Date.now()}.jpg`;
@@ -126,6 +128,7 @@ export default function Asistente({ evento }) {
         throw new Error(resultado?.error || "Error generando la foto con IA");
       }
 
+      setUrlResultadoIA(resultado?.foto?.url || null);
       setIaLista(true);
     } catch (err) {
       setErrorIA(err.message || "No se pudo generar la foto con IA. Intenta de nuevo.");
@@ -138,6 +141,7 @@ export default function Asistente({ evento }) {
     setStep("subir"); setPreview(null); setFile(null);
     setAutorizada(true); setError("");
     setGenerandoIA(false); setErrorIA(""); setIaLista(false);
+    setUrlResultadoIA(null);
   };
 
   if (!evento) {
@@ -251,13 +255,27 @@ export default function Asistente({ evento }) {
         {step === "ia" && (
           <div className="rise">
             <div className="card" style={{ textAlign: "center" }}>
-              {preview && (
+              {/* Mientras genera, muestra la foto original que subió el invitado */}
+              {(generandoIA || errorIA) && preview && (
                 <img
                   src={preview}
                   alt="Tu foto"
                   style={{
                     width: "100%", borderRadius: "var(--r-md)", aspectRatio: "4/3",
                     objectFit: "cover", marginBottom: 18, border: "1px solid var(--border)",
+                    opacity: generandoIA ? 0.5 : 1,
+                  }}
+                />
+              )}
+
+              {/* Cuando está lista, muestra el RESULTADO de la IA, no la foto original */}
+              {!generandoIA && iaLista && urlResultadoIA && (
+                <img
+                  src={urlResultadoIA}
+                  alt="Tu foto transformada con IA"
+                  style={{
+                    width: "100%", borderRadius: "var(--r-md)", aspectRatio: "4/3",
+                    objectFit: "cover", marginBottom: 18, border: "1px solid var(--cyan)",
                   }}
                 />
               )}
@@ -275,18 +293,11 @@ export default function Asistente({ evento }) {
 
               {!generandoIA && iaLista && (
                 <>
-                  <div style={{
-                    width: 56, height: 56, borderRadius: "50%", background: "var(--tint-cyan)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    margin: "0 auto 18px",
-                  }}>
-                    <Icon.Check size={26} color="var(--cyan)" />
-                  </div>
                   <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>
-                    Foto IA generada
+                    ¡Aquí está tu foto!
                   </h2>
                   <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, marginBottom: 22 }}>
-                    Revísala en el panel de moderación del evento.
+                    Ya quedó registrada. El operador la revisa y aparece en la pantalla.
                   </p>
                   <button className="btn btn-ghost btn-block" onClick={reiniciar}>
                     Probar otra foto
