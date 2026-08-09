@@ -64,17 +64,24 @@ module.exports = async function handler(req, res) {
   );
 
   // ---------------------------------------------------------------------
-  // 1. Control de cuota: revisamos si el evento tiene límite y si ya se
-  //    alcanzó, cortamos ANTES de gastar la llamada a WaveSpeed.
+  // 1. Control de acceso: revisamos que la IA esté habilitada para este
+  //    evento, y si tiene cuota, que no se haya alcanzado. Cortamos ANTES
+  //    de gastar la llamada a WaveSpeed en cualquiera de los dos casos.
   // ---------------------------------------------------------------------
   const { data: evento, error: errorEvento } = await supabase
     .from('eventos')
-    .select('cuota_ia')
+    .select('cuota_ia, ia_habilitada')
     .eq('id', eventoId)
     .single();
 
   if (errorEvento) {
     return res.status(500).json({ error: 'No se pudo verificar el evento' });
+  }
+
+  if (evento?.ia_habilitada === false) {
+    return res.status(403).json({
+      error: 'FUNphoto IA no está disponible para este evento',
+    });
   }
 
   if (evento?.cuota_ia !== null && evento?.cuota_ia !== undefined) {

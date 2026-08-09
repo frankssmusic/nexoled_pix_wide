@@ -263,25 +263,28 @@ export default function Asistente({ evento }) {
             )}
 
             {/* ---- Prueba: botón FUNphoto IA en pantalla principal ---- */}
-            {/* Sin diseño final todavía — solo para validar el flujo completo */}
-            <div style={{
-              marginTop: 26, paddingTop: 20,
-              borderTop: "1px dashed var(--border)", textAlign: "center",
-            }}>
-              <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
-                Zona de prueba
+            {/* Sin diseño final todavía — solo para validar el flujo completo. */}
+            {/* Solo se muestra si el admin dejó la IA activada para este evento. */}
+            {evento?.ia_habilitada !== false && (
+              <div style={{
+                marginTop: 26, paddingTop: 20,
+                borderTop: "1px dashed var(--border)", textAlign: "center",
+              }}>
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
+                  Zona de prueba
+                </div>
+                <label className="btn btn-ghost btn-block" style={{ cursor: "pointer" }}>
+                  FUNphoto IA — Game of Thrones
+                  <input
+                    ref={fileRefIA}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => tomarArchivoIA(e.target.files[0])}
+                    style={{ display: "none" }}
+                  />
+                </label>
               </div>
-              <label className="btn btn-ghost btn-block" style={{ cursor: "pointer" }}>
-                FUNphoto IA — Game of Thrones
-                <input
-                  ref={fileRefIA}
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => tomarArchivoIA(e.target.files[0])}
-                  style={{ display: "none" }}
-                />
-              </label>
-            </div>
+            )}
 
             <Banner />
           </div>

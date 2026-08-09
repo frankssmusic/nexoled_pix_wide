@@ -6,6 +6,11 @@ import { cargarJSZip, cargarXLSX } from "../cdn";
 import Icon from "../components/Icons";
 import { Logo, Toast, Stat, Vacio, Modal } from "../components/UI";
 
+const COSTO_USD_POR_FOTO_IA = 0.045;
+// Ajusta este valor cuando cambie el tipo de cambio. Es solo una referencia
+// aproximada para que veas el costo máximo estimado en pesos.
+const CLP_POR_USD = 950;
+
 export default function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [pass, setPass] = useState("");
@@ -20,7 +25,7 @@ export default function Admin() {
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [expandido, setExpandido] = useState(null);
   const [qrModal, setQrModal] = useState(null);
-  const [editando, setEditando] = useState({});      // { [eventoId]: { nombre, clave } }
+  const [editando, setEditando] = useState({});      // { [eventoId]: { nombre, clave, invitados } }
   const [guardando, setGuardando] = useState(null);  // eventoId que está guardando
   const [operadores, setOperadores] = useState([]);
   const [verOps, setVerOps] = useState(false);
@@ -73,6 +78,7 @@ export default function Admin() {
         descarga_habilitada: false,
         mensaje_subida: "Subir foto",
         session_version: 1,
+        ia_habilitada: true,
       });
       if (err) throw err;
       setNuevoNombre("");
@@ -164,7 +170,11 @@ export default function Admin() {
     if (!abierto) {
       setEditando((prev) => ({
         ...prev,
-        [ev.id]: { nombre: ev.nombre, clave: ev.clave_operador },
+        [ev.id]: {
+          nombre: ev.nombre,
+          clave: ev.clave_operador,
+          invitados: ev.invitados ?? "",
+        },
       }));
     }
   };
@@ -173,9 +183,15 @@ export default function Admin() {
     const campos = editando[ev.id];
     if (!campos?.nombre?.trim()) { setToast("El nombre no puede estar vacío"); return; }
     setGuardando(ev.id);
+
+    const invitadosNum = campos.invitados === "" ? null : parseInt(campos.invitados, 10);
+    const cuotaCalculada = invitadosNum ? invitadosNum * 2 : null;
+
     const { error: err } = await supabase.from("eventos").update({
       nombre: campos.nombre.trim(),
       clave_operador: campos.clave.trim() || ev.clave_operador,
+      invitados: invitadosNum,
+      cuota_ia: cuotaCalculada,
     }).eq("id", ev.id);
     setGuardando(null);
     if (err) { setToast("No se pudo guardar"); return; }
@@ -352,6 +368,12 @@ export default function Admin() {
             const c = conteos[ev.id] || { total: 0, pending: 0, approved: 0, rejected: 0 };
             const abierto = expandido === ev.id;
             const urls = urlsDe(ev.slug);
+            const camposEd = editando[ev.id] || {};
+            const invitadosVista = camposEd.invitados ?? (ev.invitados ?? "");
+            const cuotaVista = invitadosVista ? parseInt(invitadosVista, 10) * 2 : ev.cuota_ia;
+            const costoUsdVista = cuotaVista ? (cuotaVista * COSTO_USD_POR_FOTO_IA) : null;
+            const costoClpVista = costoUsdVista ? Math.round(costoUsdVista * CLP_POR_USD) : null;
+
             return (
               <div key={ev.id} className="card">
                 {/* Cabecera del evento */}
@@ -365,6 +387,9 @@ export default function Admin() {
                       </span>
                       {c.pending > 0 && !ev.evento_cerrado && (
                         <span className="chip chip-warn">{c.pending} por revisar</span>
+                      )}
+                      {ev.ia_habilitada === false && (
+                        <span className="chip chip-danger">IA desactivada</span>
                       )}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 6 }}>
@@ -438,10 +463,63 @@ export default function Admin() {
                           El ↻ genera una clave nueva y expira las sesiones activas.
                         </div>
                       </div>
+
+                      {/* --- Cuota de fotos IA por invitados --- */}
+                      <div>
+                        <label className="label">N° aproximado de invitados</label>
+                        <input
+                          className="input"
+                          type="number"
+                          min="0"
+                          value={invitadosVista}
+                          onChange={(e) => setEditando((prev) => ({
+                            ...prev,
+                            [ev.id]: { ...prev[ev.id], invitados: e.target.value },
+                          }))}
+                          placeholder="Ej: 500"
+                        />
+                        {cuotaVista ? (
+                          <div style={{
+                            marginTop: 10, padding: 12, background: "var(--bg)",
+                            border: "1px solid var(--border)", borderRadius: "var(--r-sm)",
+                          }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                              <span style={{ color: "var(--text-dim)" }}>Cuota de fotos IA</span>
+                              <span style={{ color: "var(--cyan)" }}>{cuotaVista} fotos</span>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                              <span style={{ color: "var(--text-dim)" }}>Costo máximo estimado</span>
+                              <span style={{ color: "var(--text)" }}>
+                                ${costoClpVista?.toLocaleString("es-CL")} CLP (~US${costoUsdVista?.toFixed(2)})
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
+                              Calculado como invitados × 2 fotos, a ${COSTO_USD_POR_FOTO_IA} USD c/u. Tipo de cambio referencial ${CLP_POR_USD}/USD.
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
+                            Ingresa el número de invitados para calcular la cuota y el costo máximo.
+                          </div>
+                        )}
+                      </div>
+
+                      {/* --- Interruptor de FUNphoto IA --- */}
+                      <Fila
+                        titulo="FUNphoto IA"
+                        detalle={ev.ia_habilitada === false
+                          ? "Desactivada — el botón no aparece para los invitados"
+                          : "Activada — los invitados pueden generar fotos con IA"}
+                        activo={ev.ia_habilitada !== false}
+                        onToggle={() => actualizar(ev, { ia_habilitada: ev.ia_habilitada === false },
+                          ev.ia_habilitada === false ? "IA activada" : "IA desactivada")}
+                      />
+
                       <button
                         className="btn btn-primary btn-sm"
                         onClick={() => guardarConfig(ev)}
                         disabled={guardando === ev.id}
+                        style={{ marginTop: 4 }}
                       >
                         {guardando === ev.id ? "Guardando…" : "Guardar cambios"}
                       </button>
