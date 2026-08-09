@@ -14,7 +14,7 @@
 //   7. Crea el registro en la tabla `fotos` como pendiente de moderación
 //   8. Devuelve la URL final al frontend
 
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = require('@supabase/supabase-js');
 
 // ---------------------------------------------------------------------------
 // Catálogo de prompts por modo.
@@ -28,7 +28,7 @@ const PROMPTS_POR_MODO = {
 
 const COSTO_USD_POR_FOTO = 0.045;
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido' });
   }
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
           Authorization: `Bearer ${process.env.WAVESPEED_API_KEY}`,
         },
         body: JSON.stringify({
-          image: fotoUrl,
+          images: [fotoUrl],
           prompt: prompt,
         }),
       }
