@@ -296,8 +296,10 @@ export default function Asistente({ evento }) {
                   src={preview}
                   alt="Tu foto"
                   style={{
-                    width: "100%", borderRadius: "var(--r-md)", aspectRatio: "4/3",
-                    objectFit: "cover", marginBottom: 18, border: "1px solid var(--border)",
+                    width: "100%", maxWidth: 280, margin: "0 auto 18px",
+                    borderRadius: "var(--r-md)", aspectRatio: "9/16",
+                    objectFit: "cover", display: "block",
+                    border: "1px solid var(--border)",
                     opacity: generandoIA ? 0.5 : 1,
                   }}
                 />
@@ -309,8 +311,10 @@ export default function Asistente({ evento }) {
                   src={urlResultadoIA}
                   alt="Tu foto transformada con IA"
                   style={{
-                    width: "100%", borderRadius: "var(--r-md)", aspectRatio: "4/3",
-                    objectFit: "cover", marginBottom: 18, border: "1px solid var(--cyan)",
+                    width: "100%", maxWidth: 280, margin: "0 auto 18px",
+                    borderRadius: "var(--r-md)", aspectRatio: "9/16",
+                    objectFit: "cover", display: "block",
+                    border: "1px solid var(--cyan)",
                   }}
                 />
               )}
