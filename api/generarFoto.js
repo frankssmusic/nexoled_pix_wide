@@ -23,10 +23,17 @@ const { createClient } = require('@supabase/supabase-js');
 // ---------------------------------------------------------------------------
 const PROMPTS_POR_MODO = {
   game_of_thrones:
-    'Transform this photo into an epic Game of Thrones style scene. Place the person in front of a massive medieval stone castle at dusk, with a majestic dragon flying in the sky behind them. Cinematic lighting, dramatic atmosphere, fantasy epic style, highly detailed, photorealistic. Keep the person\'s face, identity and expression fully recognizable and unchanged.',
+    "Close-up POV selfie perspective, the figure stands impossibly close to the camera, face bathed in soft, cinematic light — fair or pale skin, delicate features, neutral yet warmly confident expression, eyes slightly tilted upward as if gazing into a hidden power. They wear dark, heavy medieval robes with luxurious fur trim along the collar and cuffs, layered beneath a hooded cloak that drapes naturally, textured and worn with elegant, faded embroidery. Gender-neutral, androgynous features suggest non-binary presence — smooth, balanced, without overt gender cues. To their right, a colossal dragon head dominates the frame — massive, ancient, and unblinking — one glowing amber eye pulses gently, radiating mystical energy. Its scales shimmer with moisture, dark and intricately textured, smoke curling richly from its nostrils. Behind them, a blurred stone hall with monumental arches, flickering torchlight, and deep shadows — warm orange glows contrast with cold, stone textures — amplifying the tension between the human and the primordial beast. No armor, no weapons — just powerful, unguarded presence. Cinematic, photorealistic, hyper-detailed, Game of Thrones-inspired atmosphere — dynamic lighting, shallow depth of field, emphasizing scale, intimacy, and ancestral weight.",
 };
 
 const COSTO_USD_POR_FOTO = 0.045;
+
+// Nota de mantenimiento: cada intento descartado por el invitado (cuando
+// prueba de nuevo o cambia de foto) queda como fila "borrador" en la tabla
+// `fotos`, sin limpiarse. No afecta el funcionamiento ni se ve en ningún
+// panel, pero con el tiempo acumula filas "basura". Si más adelante quieres
+// una limpieza automática, se puede armar un cron job en Vercel que borre
+// filas con status='borrador' más viejas que, por ejemplo, 24 horas.
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -184,14 +191,18 @@ module.exports = async function handler(req, res) {
       .getPublicUrl(nombreArchivo);
 
     // ---------------------------------------------------------------------
-    // 5. Registrar la foto en la tabla `fotos` — queda pendiente de
-    //    moderación igual que cualquier foto subida normalmente
+    // 5. Registrar la foto en la tabla `fotos` como BORRADOR.
+    //    "borrador" no es "pending"/"approved"/"rejected", así que el
+    //    operador no la ve todavía — solo se vuelve visible si el invitado
+    //    confirma con "Usar esta foto" (eso lo hace el frontend, cambiando
+    //    el status a "pending").
     // ---------------------------------------------------------------------
     const { data: fotoCreada, error: errorInsert } = await supabase
       .from('fotos')
       .insert({
         evento_id: eventoId,
         url: urlPublica.publicUrl,
+        status: 'borrador',
         autorizada: false,
         es_ia: true,
         modo_ia: modo,

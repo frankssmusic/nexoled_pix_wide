@@ -17,6 +17,11 @@ export default function Asistente({ evento }) {
   const [errorIA, setErrorIA] = useState("");
   const [iaLista, setIaLista] = useState(false);
   const [urlResultadoIA, setUrlResultadoIA] = useState(null);
+  const [fotoIdIA, setFotoIdIA] = useState(null);
+  const [intentosIA, setIntentosIA] = useState(0);
+  const [confirmandoIA, setConfirmandoIA] = useState(false);
+  const [iaConfirmada, setIaConfirmada] = useState(false);
+  const MAX_INTENTOS_IA = 2;
 
   const fileRef = useRef();
   const fileRefIA = useRef();
@@ -81,6 +86,8 @@ export default function Asistente({ evento }) {
     }
     setError("");
     setFile(f);
+    setIntentosIA(0);
+    setIaConfirmada(false);
     const reader = new FileReader();
     reader.onload = (e) => {
       setPreview(e.target.result);
@@ -129,6 +136,8 @@ export default function Asistente({ evento }) {
       }
 
       setUrlResultadoIA(resultado?.foto?.url || null);
+      setFotoIdIA(resultado?.foto?.id || null);
+      setIntentosIA((n) => n + 1);
       setIaLista(true);
     } catch (err) {
       setErrorIA(err.message || "No se pudo generar la foto con IA. Intenta de nuevo.");
@@ -137,11 +146,37 @@ export default function Asistente({ evento }) {
     }
   };
 
+  // --- Botón "Probar otra vez": genera de nuevo con la misma foto original ---
+  const intentarDeNuevo = () => {
+    if (intentosIA >= MAX_INTENTOS_IA) return;
+    setIaLista(false);
+    probarGameOfThrones(file);
+  };
+
+  // --- Botón "Usar esta foto": recién aquí se vuelve visible para el operador ---
+  const confirmarFotoIA = async () => {
+    if (!fotoIdIA) return;
+    setConfirmandoIA(true);
+    try {
+      const { error: errUpdate } = await supabase
+        .from("fotos")
+        .update({ status: "pending" })
+        .eq("id", fotoIdIA);
+      if (errUpdate) throw errUpdate;
+      setIaConfirmada(true);
+    } catch {
+      setErrorIA("No se pudo confirmar la foto. Intenta de nuevo.");
+    } finally {
+      setConfirmandoIA(false);
+    }
+  };
+
   const reiniciar = () => {
     setStep("subir"); setPreview(null); setFile(null);
     setAutorizada(true); setError("");
     setGenerandoIA(false); setErrorIA(""); setIaLista(false);
-    setUrlResultadoIA(null);
+    setUrlResultadoIA(null); setFotoIdIA(null); setIntentosIA(0);
+    setConfirmandoIA(false); setIaConfirmada(false);
   };
 
   if (!evento) {
@@ -291,13 +326,59 @@ export default function Asistente({ evento }) {
                 </>
               )}
 
-              {!generandoIA && iaLista && (
+              {!generandoIA && iaLista && !iaConfirmada && (
                 <>
                   <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>
-                    ¡Aquí está tu foto!
+                    ¿Te gusta el resultado?
+                  </h2>
+                  <p style={{ color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6, marginBottom: 6 }}>
+                    Intento {intentosIA} de {MAX_INTENTOS_IA}
+                  </p>
+                  {intentosIA >= MAX_INTENTOS_IA && (
+                    <p style={{ color: "var(--warn, #f5a623)", fontSize: 12.5, lineHeight: 1.5, marginBottom: 16 }}>
+                      Ya usaste tus {MAX_INTENTOS_IA} intentos. Elige esta foto o vuelve a "Subir foto" normal.
+                    </p>
+                  )}
+
+                  <div style={{ display: "flex", gap: 10, marginTop: intentosIA >= MAX_INTENTOS_IA ? 0 : 16 }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ flex: 1 }}
+                      onClick={intentarDeNuevo}
+                      disabled={intentosIA >= MAX_INTENTOS_IA || confirmandoIA}
+                    >
+                      Probar otra vez
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      style={{ flex: 1 }}
+                      onClick={confirmarFotoIA}
+                      disabled={confirmandoIA}
+                    >
+                      {confirmandoIA ? "Confirmando…" : "Usar esta foto"}
+                    </button>
+                  </div>
+
+                  <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={reiniciar}>
+                    Cambiar de foto
+                  </button>
+                </>
+              )}
+
+              {!generandoIA && iaLista && iaConfirmada && (
+                <>
+                  <div style={{
+                    width: 56, height: 56, borderRadius: "50%", background: "var(--tint-cyan)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    margin: "0 auto 18px",
+                  }}>
+                    <Icon.Check size={26} color="var(--cyan)" />
+                  </div>
+                  <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>
+                    ¡Listo!
                   </h2>
                   <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, marginBottom: 22 }}>
-                    Ya quedó registrada. El operador la revisa y aparece en la pantalla.
+                    El operador la revisa y, si la aprueba, aparece en la pantalla.
                   </p>
                   <button className="btn btn-ghost btn-block" onClick={reiniciar}>
                     Probar otra foto
