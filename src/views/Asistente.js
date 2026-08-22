@@ -4,6 +4,37 @@ import { comprimirImagen } from "../lib";
 import Icon from "../components/Icons";
 import { Vacio } from "../components/UI";
 
+// ---------------------------------------------------------------------------
+// Catálogo de modos IA. Por ahora solo nombre — cuando tengamos las fotos de
+// portada de cada modo, se agrega un campo `imagen` acá y se usa en el grid.
+// El id debe ser EXACTAMENTE igual al key usado en api/generarFoto.js
+// ---------------------------------------------------------------------------
+const MODOS_IA = [
+  { id: "game_of_thrones", nombre: "Game of Thrones" },
+  { id: "peaky_style", nombre: "Peaky Style" },
+  { id: "breaking_bad", nombre: "Breaking Bad" },
+  { id: "viejitos", nombre: "Viejitos" },
+  { id: "harry_magic", nombre: "Harry Magic" },
+  { id: "super_hero", nombre: "Super Hero" },
+  { id: "grease", nombre: "Grease" },
+  { id: "jurassic_park", nombre: "Jurassic Park" },
+  { id: "simpsons", nombre: "Simpsons" },
+  { id: "princesa_disney", nombre: "Princesa Disney" },
+  { id: "disco_70s", nombre: "70s Disco" },
+  { id: "barbie", nombre: "Barbie" },
+];
+
+// Este es un "modo especial": en vez de disparar la generación directo,
+// abre el subcatálogo de 4 jugadores.
+const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
+
+const SUBMODOS_FUTBOL = [
+  { id: "futbol_fan_1", nombre: "Jugador 1" },
+  { id: "futbol_fan_2", nombre: "Jugador 2" },
+  { id: "futbol_fan_3", nombre: "Jugador 3" },
+  { id: "futbol_fan_4", nombre: "Jugador 4" },
+];
+
 export default function Asistente({ evento }) {
   const [step, setStep] = useState("subir");
   const [preview, setPreview] = useState(null);
@@ -12,7 +43,7 @@ export default function Asistente({ evento }) {
   const [error, setError] = useState("");
   const [autorizada, setAutorizada] = useState(true);
 
-  // --- Estado nuevo, solo para la prueba de Funny Photo IA ---
+  // --- Estado de Funny Photo IA ---
   const [generandoIA, setGenerandoIA] = useState(false);
   const [errorIA, setErrorIA] = useState("");
   const [iaLista, setIaLista] = useState(false);
@@ -21,10 +52,14 @@ export default function Asistente({ evento }) {
   const [intentosIA, setIntentosIA] = useState(0);
   const [confirmandoIA, setConfirmandoIA] = useState(false);
   const [iaConfirmada, setIaConfirmada] = useState(false);
+  const [modoSeleccionado, setModoSeleccionado] = useState(null);
   const MAX_INTENTOS_IA = 2;
 
   const fileRef = useRef();
   const fileRefIA = useRef();
+  // Guarda qué modo se eligió en el catálogo justo antes de abrir el
+  // selector de foto — se usa apenas el usuario elige la imagen.
+  const modoParaSubidaRef = useRef(null);
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
 
@@ -75,34 +110,53 @@ export default function Asistente({ evento }) {
     }
   };
 
-  // --- Handler nuevo: botón "FUNphoto IA" en la pantalla principal ---
-  // Toma la foto igual que el flujo normal, pero en vez de ir a "revisar",
-  // dispara directo la generación con IA.
+  // --- Catálogo: abre el subcatálogo de Fútbol Fan, o dispara el selector
+  // de foto directo para cualquier otro modo ---
+  const elegirModo = (modoId) => {
+    if (modoId === "futbol_fan") {
+      setStep("catalogo-futbol");
+      return;
+    }
+    modoParaSubidaRef.current = modoId;
+    fileRefIA.current?.click();
+  };
+
+  const elegirSubmodoFutbol = (modoId) => {
+    modoParaSubidaRef.current = modoId;
+    fileRefIA.current?.click();
+  };
+
+  // --- Handler: el usuario ya eligió modo (en el catálogo) y ahora elige
+  // la foto — dispara la generación con ese modo ---
   const tomarArchivoIA = (f) => {
     if (!f) return;
     if (!f.type.startsWith("image/")) {
       setError("Ese archivo no es una imagen. Elige una foto.");
       return;
     }
+    const modo = modoParaSubidaRef.current;
+    if (!modo) return;
+
     setError("");
     setFile(f);
     setIntentosIA(0);
     setIaConfirmada(false);
+    setModoSeleccionado(modo);
     const reader = new FileReader();
     reader.onload = (e) => {
       setPreview(e.target.result);
       setStep("ia");
-      probarGameOfThrones(f);
+      generarConIA(f, modo);
     };
     reader.readAsDataURL(f);
   };
 
-  // --- Función nueva, solo para la prueba de Funny Photo IA ---
-  // Sube la foto original a Supabase (para tener una URL pública que WaveSpeed
-  // pueda leer) y luego llama a api/generarFoto.js con el modo Game of Thrones.
-  const probarGameOfThrones = async (fileParaIA) => {
+  // --- Sube la foto original a Supabase y llama a api/generarFoto.js
+  // con el modo elegido en el catálogo ---
+  const generarConIA = async (fileParaIA, modo) => {
     const fileAUsar = fileParaIA || file;
-    if (!fileAUsar || !evento) return;
+    const modoAUsar = modo || modoSeleccionado;
+    if (!fileAUsar || !evento || !modoAUsar) return;
     setGenerandoIA(true);
     setErrorIA("");
     setIaLista(false);
@@ -124,7 +178,7 @@ export default function Asistente({ evento }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fotoUrl: urlOriginal.publicUrl,
-          modo: "game_of_thrones",
+          modo: modoAUsar,
           eventoId: evento.id,
         }),
       });
@@ -146,11 +200,11 @@ export default function Asistente({ evento }) {
     }
   };
 
-  // --- Botón "Probar otra vez": genera de nuevo con la misma foto original ---
+  // --- Botón "Probar otra vez": genera de nuevo con la misma foto y modo ---
   const intentarDeNuevo = () => {
     if (intentosIA >= MAX_INTENTOS_IA) return;
     setIaLista(false);
-    probarGameOfThrones(file);
+    generarConIA(file, modoSeleccionado);
   };
 
   // --- Botón "Usar esta foto": recién aquí se vuelve visible para el operador ---
@@ -176,7 +230,8 @@ export default function Asistente({ evento }) {
     setAutorizada(true); setError("");
     setGenerandoIA(false); setErrorIA(""); setIaLista(false);
     setUrlResultadoIA(null); setFotoIdIA(null); setIntentosIA(0);
-    setConfirmandoIA(false); setIaConfirmada(false);
+    setConfirmandoIA(false); setIaConfirmada(false); setModoSeleccionado(null);
+    modoParaSubidaRef.current = null;
   };
 
   if (!evento) {
@@ -204,6 +259,16 @@ export default function Asistente({ evento }) {
       alignItems: "center", justifyContent: "center", padding: "20px 16px 40px",
     }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
+
+        {/* Input oculto y compartido para TODOS los modos IA — se dispara
+            desde elegirModo() / elegirSubmodoFutbol() con .click() */}
+        <input
+          ref={fileRefIA}
+          type="file"
+          accept="image/*"
+          onChange={(e) => tomarArchivoIA(e.target.files[0])}
+          style={{ display: "none" }}
+        />
 
         {/* Cabecera del evento */}
         <header style={{ textAlign: "center", marginBottom: 24 }}>
@@ -262,29 +327,113 @@ export default function Asistente({ evento }) {
               </div>
             )}
 
-            {/* ---- Prueba: botón FUNphoto IA en pantalla principal ---- */}
-            {/* Sin diseño final todavía — solo para validar el flujo completo. */}
-            {/* Solo se muestra si el admin dejó la IA activada para este evento. */}
+            {/* Botón que lleva al catálogo de modos IA — solo si el admin
+                dejó la IA activada para este evento. */}
             {evento?.ia_habilitada !== false && (
               <div style={{
                 marginTop: 26, paddingTop: 20,
                 borderTop: "1px dashed var(--border)", textAlign: "center",
               }}>
-                <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
-                  Zona de prueba
-                </div>
-                <label className="btn btn-ghost btn-block" style={{ cursor: "pointer" }}>
-                  FUNphoto IA — Game of Thrones
-                  <input
-                    ref={fileRefIA}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => tomarArchivoIA(e.target.files[0])}
-                    style={{ display: "none" }}
-                  />
-                </label>
+                <button
+                  className="btn btn-ghost btn-block"
+                  onClick={() => setStep("catalogo")}
+                >
+                  FUNphoto IA
+                </button>
               </div>
             )}
+
+            <Banner />
+          </div>
+        )}
+
+        {step === "catalogo" && (
+          <div className="rise">
+            <div style={{ textAlign: "center", marginBottom: 18 }}>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>FUNphoto IA</div>
+              <h2 className="display" style={{ fontSize: 20 }}>Elige un modo</h2>
+            </div>
+
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
+            }}>
+              {MODOS_IA.map((modo) => (
+                <button
+                  key={modo.id}
+                  onClick={() => elegirModo(modo.id)}
+                  className="card"
+                  style={{
+                    aspectRatio: "1 / 1", display: "flex", alignItems: "center",
+                    justifyContent: "center", textAlign: "center", padding: 12,
+                    cursor: "pointer", border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                  }}
+                >
+                  <span className="display" style={{ fontSize: 14 }}>{modo.nombre}</span>
+                </button>
+              ))}
+
+              {/* Fútbol Fan: lleva al subcatálogo, no dispara generación directo */}
+              <button
+                onClick={() => elegirModo(MODO_FUTBOL_FAN.id)}
+                className="card"
+                style={{
+                  aspectRatio: "1 / 1", display: "flex", alignItems: "center",
+                  justifyContent: "center", textAlign: "center", padding: 12,
+                  cursor: "pointer", border: "1px solid var(--cyan)",
+                  background: "var(--surface)",
+                }}
+              >
+                <span className="display" style={{ fontSize: 14 }}>{MODO_FUTBOL_FAN.nombre}</span>
+              </button>
+            </div>
+
+            <button
+              className="btn btn-ghost btn-block"
+              style={{ marginTop: 20 }}
+              onClick={() => setStep("subir")}
+            >
+              Volver
+            </button>
+
+            <Banner />
+          </div>
+        )}
+
+        {step === "catalogo-futbol" && (
+          <div className="rise">
+            <div style={{ textAlign: "center", marginBottom: 18 }}>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>Fútbol Fan</div>
+              <h2 className="display" style={{ fontSize: 20 }}>Elige tu compañero de selfie</h2>
+            </div>
+
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
+            }}>
+              {SUBMODOS_FUTBOL.map((sub) => (
+                <button
+                  key={sub.id}
+                  onClick={() => elegirSubmodoFutbol(sub.id)}
+                  className="card"
+                  style={{
+                    aspectRatio: "1 / 1", display: "flex", alignItems: "center",
+                    justifyContent: "center", textAlign: "center", padding: 12,
+                    cursor: "pointer", border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                  }}
+                >
+                  <span className="display" style={{ fontSize: 14 }}>{sub.nombre}</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              className="btn btn-ghost btn-block"
+              style={{ marginTop: 20 }}
+              onClick={() => setStep("catalogo")}
+            >
+              Volver al catálogo
+            </button>
 
             <Banner />
           </div>
