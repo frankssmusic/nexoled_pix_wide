@@ -354,6 +354,13 @@ export default function Asistente({ evento }) {
               <h2 className="display" style={{ fontSize: 20 }}>Elige un modo</h2>
             </div>
 
+            <div className="chip" style={{
+              marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
+              lineHeight: 1.5, textAlign: "center", justifyContent: "center",
+            }}>
+              📸 Usa una selfie con buena luz y tu rostro bien visible — así la IA te reconoce mejor.
+            </div>
+
             <div style={{
               display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
             }}>
@@ -369,7 +376,7 @@ export default function Asistente({ evento }) {
                     background: "var(--surface)",
                   }}
                 >
-                  <span className="display" style={{ fontSize: 14 }}>{modo.nombre}</span>
+                  <span className="display" style={{ fontSize: 14, color: "#fff" }}>{modo.nombre}</span>
                 </button>
               ))}
 
@@ -384,7 +391,7 @@ export default function Asistente({ evento }) {
                   background: "var(--surface)",
                 }}
               >
-                <span className="display" style={{ fontSize: 14 }}>{MODO_FUTBOL_FAN.nombre}</span>
+                <span className="display" style={{ fontSize: 14, color: "#fff" }}>{MODO_FUTBOL_FAN.nombre}</span>
               </button>
             </div>
 
@@ -407,6 +414,13 @@ export default function Asistente({ evento }) {
               <h2 className="display" style={{ fontSize: 20 }}>Elige tu compañero de selfie</h2>
             </div>
 
+            <div className="chip" style={{
+              marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
+              lineHeight: 1.5, textAlign: "center", justifyContent: "center",
+            }}>
+              📸 Usa una selfie con buena luz y tu rostro bien visible — así la IA te reconoce mejor.
+            </div>
+
             <div style={{
               display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
             }}>
@@ -422,7 +436,7 @@ export default function Asistente({ evento }) {
                     background: "var(--surface)",
                   }}
                 >
-                  <span className="display" style={{ fontSize: 14 }}>{sub.nombre}</span>
+                  <span className="display" style={{ fontSize: 14, color: "#fff" }}>{sub.nombre}</span>
                 </button>
               ))}
             </div>
@@ -518,6 +532,15 @@ export default function Asistente({ evento }) {
                   <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={reiniciar}>
                     Cambiar de foto
                   </button>
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setStep("catalogo")}>
+                      Volver al catálogo
+                    </button>
+                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reiniciar}>
+                      Ir al inicio
+                    </button>
+                  </div>
                 </>
               )}
 
@@ -550,6 +573,15 @@ export default function Asistente({ evento }) {
                   <button className="btn btn-ghost btn-block" onClick={reiniciar}>
                     Volver a intentar
                   </button>
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setStep("catalogo")}>
+                      Volver al catálogo
+                    </button>
+                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reiniciar}>
+                      Ir al inicio
+                    </button>
+                  </div>
                 </>
               )}
             </div>
