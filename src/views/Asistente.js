@@ -29,10 +29,10 @@ const MODOS_IA = [
 const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
 
 const SUBMODOS_FUTBOL = [
-  { id: "futbol_fan_1", nombre: "Jugador 1" },
-  { id: "futbol_fan_2", nombre: "Jugador 2" },
-  { id: "futbol_fan_3", nombre: "Jugador 3" },
-  { id: "futbol_fan_4", nombre: "Jugador 4" },
+  { id: "futbol_fan_1", nombre: "Países Bajos" },
+  { id: "futbol_fan_2", nombre: "Francia" },
+  { id: "futbol_fan_3", nombre: "Portugal" },
+  { id: "futbol_fan_4", nombre: "Argentina" },
 ];
 
 export default function Asistente({ evento }) {
