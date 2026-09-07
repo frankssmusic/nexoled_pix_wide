@@ -15,5 +15,10 @@
   ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/" }
-  ]
+  ],
+  "functions": {
+    "api/generarFoto.js": {
+      "maxDuration": 60
+    }
+  }
 }
