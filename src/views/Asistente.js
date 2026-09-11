@@ -151,8 +151,14 @@ export default function Asistente({ evento }) {
     reader.readAsDataURL(f);
   };
 
-  // --- Sube la foto original a Supabase y llama a api/generarFoto.js
-  // con el modo elegido en el catálogo ---
+  // --- Sube la foto original a Supabase, crea la tarea en WaveSpeed
+  // (api/generarFoto) y luego pregunta cada 3 seg si ya está lista
+  // (api/consultarFoto). Como cada llamada es corta, nunca chocamos con
+  // el límite de 60s de las funciones de Vercel, sin importar cuánto
+  // tarde WaveSpeed en generar. ---
+  const MAX_CONSULTAS = 40; // 40 x 3s = 2 minutos de espera máxima
+  const seguirGenerandoRef = useRef(true);
+
   const generarConIA = async (fileParaIA, modo) => {
     const fileAUsar = fileParaIA || file;
     const modoAUsar = modo || modoSeleccionado;
@@ -161,6 +167,8 @@ export default function Asistente({ evento }) {
     setErrorIA("");
     setIaLista(false);
     setUrlResultadoIA(null);
+    seguirGenerandoRef.current = true;
+
     try {
       const comprimida = await comprimirImagen(fileAUsar);
       const filenameOriginal = `original_${evento.id}_${Date.now()}.jpg`;
@@ -173,7 +181,8 @@ export default function Asistente({ evento }) {
         .from("fotos")
         .getPublicUrl(filenameOriginal);
 
-      const respuesta = await fetch("/api/generarFoto", {
+      // Paso 1: crear la tarea — responde rápido con un taskId
+      const respuestaCrear = await fetch("/api/generarFoto", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -183,19 +192,46 @@ export default function Asistente({ evento }) {
         }),
       });
 
-      const resultado = await respuesta.json();
+      const resultadoCrear = await respuestaCrear.json();
 
-      if (!respuesta.ok) {
-        throw new Error(resultado?.error || "Error generando la foto con IA");
+      if (!respuestaCrear.ok) {
+        throw new Error(resultadoCrear?.error || "Error creando la generación con IA");
       }
 
-      setUrlResultadoIA(resultado?.foto?.url || null);
-      setFotoIdIA(resultado?.foto?.id || null);
-      setIntentosIA((n) => n + 1);
-      setIaLista(true);
+      const { taskId } = resultadoCrear;
+
+      // Paso 2: preguntar cada 3 seg si ya está lista
+      for (let intento = 0; intento < MAX_CONSULTAS; intento++) {
+        if (!seguirGenerandoRef.current) return; // el usuario canceló/cambió de pantalla
+
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        const respuestaConsulta = await fetch("/api/consultarFoto", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ taskId, modo: modoAUsar, eventoId: evento.id }),
+        });
+
+        const resultadoConsulta = await respuestaConsulta.json();
+
+        if (!respuestaConsulta.ok) {
+          throw new Error(resultadoConsulta?.error || "Error generando la foto con IA");
+        }
+
+        if (resultadoConsulta.listo) {
+          setUrlResultadoIA(resultadoConsulta?.foto?.url || null);
+          setFotoIdIA(resultadoConsulta?.foto?.id || null);
+          setIntentosIA((n) => n + 1);
+          setIaLista(true);
+          setGenerandoIA(false);
+          return;
+        }
+        // si "listo: false", el for vuelve a preguntar
+      }
+
+      throw new Error("La generación demoró demasiado, intenta de nuevo");
     } catch (err) {
       setErrorIA(err.message || "No se pudo generar la foto con IA. Intenta de nuevo.");
-    } finally {
       setGenerandoIA(false);
     }
   };
@@ -226,6 +262,7 @@ export default function Asistente({ evento }) {
   };
 
   const reiniciar = () => {
+    seguirGenerandoRef.current = false;
     setStep("subir"); setPreview(null); setFile(null);
     setAutorizada(true); setError("");
     setGenerandoIA(false); setErrorIA(""); setIaLista(false);
@@ -491,7 +528,7 @@ export default function Asistente({ evento }) {
                     Generando con IA…
                   </div>
                   <p style={{ color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6 }}>
-                    Puede tardar hasta 45 segundos. No cierres esta pantalla.
+                    Puede tardar hasta 2 minutos en modos con más detalle. No cierres esta pantalla.
                   </p>
                 </>
               )}
