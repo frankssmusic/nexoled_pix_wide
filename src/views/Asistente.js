@@ -304,7 +304,7 @@ export default function Asistente({ evento }) {
           type="file"
           accept="image/*"
           onChange={(e) => tomarArchivoIA(e.target.files[0])}
-          style={{ display: "none" }}
+          style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
         />
 
         {/* Cabecera del evento */}
