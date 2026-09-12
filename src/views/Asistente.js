@@ -339,7 +339,8 @@ export default function Asistente({ evento }) {
           <div className="rise">
             {/* Tótem: la pantalla LED en miniatura, es el gesto de subida */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <label
+              <button
+                onClick={() => setStep("elegir-fuente-normal")}
                 style={{
                   position: "relative", width: "min(72vw, 260px)", aspectRatio: "0.45 / 1",
                   borderRadius: "14px 14px 3px 3px", overflow: "hidden", cursor: "pointer",
@@ -350,17 +351,10 @@ export default function Asistente({ evento }) {
                   justifyContent: "center", gap: 14, padding: 20, textAlign: "center",
                 }}
               >
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => tomarArchivo(e.target.files[0])}
-                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
-                />
                 <Icon.Camera size={38} color="var(--cyan)" />
                 <div className="display" style={{ fontSize: 17, lineHeight: 1.25 }}>{mensaje}</div>
                 <div style={{ fontSize: 12, color: "var(--text-dim)" }}>JPG · PNG · HEIC</div>
-              </label>
+              </button>
               {/* Patas del tótem */}
               <div style={{ display: "flex", gap: 26 }}>
                 {[0, 1].map((i) => (
@@ -372,14 +366,6 @@ export default function Asistente({ evento }) {
                 ))}
               </div>
             </div>
-
-            <button
-              className="btn btn-ghost btn-block"
-              style={{ marginTop: 14 }}
-              onClick={() => fileRefCamara.current?.click()}
-            >
-              Tomar foto ahora
-            </button>
 
             <p style={{
               textAlign: "center", color: "var(--text-dim)", fontSize: 14,
@@ -514,6 +500,38 @@ export default function Asistente({ evento }) {
               onClick={() => setStep("catalogo")}
             >
               Volver al catálogo
+            </button>
+
+            <Banner />
+          </div>
+        )}
+
+        {step === "elegir-fuente-normal" && (
+          <div className="rise">
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
+              <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
+            </div>
+
+            <button
+              className="btn btn-primary btn-block"
+              style={{ marginBottom: 12 }}
+              onClick={() => fileRefCamara.current?.click()}
+            >
+              Tomar foto ahora
+            </button>
+            <button
+              className="btn btn-ghost btn-block"
+              onClick={() => fileRef.current?.click()}
+            >
+              Elegir de galería
+            </button>
+
+            <button
+              className="btn btn-ghost btn-block"
+              style={{ marginTop: 20 }}
+              onClick={() => setStep("subir")}
+            >
+              Volver
             </button>
 
             <Banner />
