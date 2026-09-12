@@ -56,7 +56,9 @@ export default function Asistente({ evento }) {
   const MAX_INTENTOS_IA = 2;
 
   const fileRef = useRef();
-  const fileRefIA = useRef();
+  const fileRefCamara = useRef();
+  const fileRefIAGaleria = useRef();
+  const fileRefIACamara = useRef();
   // Guarda qué modo se eligió en el catálogo justo antes de abrir el
   // selector de foto — se usa apenas el usuario elige la imagen.
   const modoParaSubidaRef = useRef(null);
@@ -118,12 +120,12 @@ export default function Asistente({ evento }) {
       return;
     }
     modoParaSubidaRef.current = modoId;
-    fileRefIA.current?.click();
+    setStep("elegir-fuente-ia");
   };
 
   const elegirSubmodoFutbol = (modoId) => {
     modoParaSubidaRef.current = modoId;
-    fileRefIA.current?.click();
+    setStep("elegir-fuente-ia");
   };
 
   // --- Handler: el usuario ya eligió modo (en el catálogo) y ahora elige
@@ -297,13 +299,33 @@ export default function Asistente({ evento }) {
     }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
 
-        {/* Input oculto y compartido para TODOS los modos IA — se dispara
-            desde elegirModo() / elegirSubmodoFutbol() con .click() */}
+        {/* Inputs ocultos para el flujo de IA — uno abre cámara directo,
+            el otro abre galería/archivos. Se disparan desde la pantalla
+            "elegir-fuente-ia". */}
         <input
-          ref={fileRefIA}
+          ref={fileRefIACamara}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={(e) => tomarArchivoIA(e.target.files[0])}
+          style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
+        />
+        <input
+          ref={fileRefIAGaleria}
           type="file"
           accept="image/*"
           onChange={(e) => tomarArchivoIA(e.target.files[0])}
+          style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
+        />
+
+        {/* Input oculto para "Tomar foto" en la pantalla principal (modo
+            normal, sin IA) — cámara directa. */}
+        <input
+          ref={fileRefCamara}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={(e) => tomarArchivo(e.target.files[0])}
           style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
         />
 
@@ -350,6 +372,14 @@ export default function Asistente({ evento }) {
                 ))}
               </div>
             </div>
+
+            <button
+              className="btn btn-ghost btn-block"
+              style={{ marginTop: 14 }}
+              onClick={() => fileRefCamara.current?.click()}
+            >
+              Tomar foto ahora
+            </button>
 
             <p style={{
               textAlign: "center", color: "var(--text-dim)", fontSize: 14,
@@ -477,6 +507,46 @@ export default function Asistente({ evento }) {
                 </button>
               ))}
             </div>
+
+            <button
+              className="btn btn-ghost btn-block"
+              style={{ marginTop: 20 }}
+              onClick={() => setStep("catalogo")}
+            >
+              Volver al catálogo
+            </button>
+
+            <Banner />
+          </div>
+        )}
+
+        {step === "elegir-fuente-ia" && (
+          <div className="rise">
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>FUNphoto IA</div>
+              <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
+            </div>
+
+            <div className="chip" style={{
+              marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
+              lineHeight: 1.5, textAlign: "center", justifyContent: "center",
+            }}>
+              📸 Usa una selfie con buena luz y tu rostro bien visible — así la IA te reconoce mejor.
+            </div>
+
+            <button
+              className="btn btn-primary btn-block"
+              style={{ marginBottom: 12 }}
+              onClick={() => fileRefIACamara.current?.click()}
+            >
+              Tomar foto ahora
+            </button>
+            <button
+              className="btn btn-ghost btn-block"
+              onClick={() => fileRefIAGaleria.current?.click()}
+            >
+              Elegir de galería
+            </button>
 
             <button
               className="btn btn-ghost btn-block"
