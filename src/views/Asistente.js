@@ -299,6 +299,15 @@ export default function Asistente({ evento }) {
     }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
 
+        {/* Input oculto para "Elegir de galería" en el modo normal (sin IA) */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          onChange={(e) => tomarArchivo(e.target.files[0])}
+          style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
+        />
+
         {/* Inputs ocultos para el flujo de IA — uno abre cámara directo,
             el otro abre galería/archivos. Se disparan desde la pantalla
             "elegir-fuente-ia". */}
