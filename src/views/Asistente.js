@@ -764,6 +764,7 @@ export default function Asistente({ evento }) {
 function Banner() {
   return (
     
+    <a
       href="https://nexoled.cl"
       target="_blank"
       rel="noreferrer"
