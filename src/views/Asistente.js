@@ -1,14 +1,9 @@
-import { useState, useRef } from "react";
+﻿import { useState, useRef } from "react";
 import { supabase } from "../supabase";
 import { comprimirImagen } from "../lib";
 import Icon from "../components/Icons";
 import { Vacio } from "../components/UI";
 
-// ---------------------------------------------------------------------------
-// Catálogo de modos IA. Por ahora solo nombre — cuando tengamos las fotos de
-// portada de cada modo, se agrega un campo `imagen` acá y se usa en el grid.
-// El id debe ser EXACTAMENTE igual al key usado en api/generarFoto.js
-// ---------------------------------------------------------------------------
 const MODOS_IA = [
   { id: "game_of_thrones", nombre: "Game of Thrones" },
   { id: "peaky_style", nombre: "Peaky Style" },
@@ -24,8 +19,6 @@ const MODOS_IA = [
   { id: "barbie", nombre: "Barbie" },
 ];
 
-// Este es un "modo especial": en vez de disparar la generación directo,
-// abre el subcatálogo de 4 jugadores.
 const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
 
 const SUBMODOS_FUTBOL = [
@@ -43,7 +36,6 @@ export default function Asistente({ evento }) {
   const [error, setError] = useState("");
   const [autorizada, setAutorizada] = useState(true);
 
-  // --- Estado de Funny Photo IA ---
   const [generandoIA, setGenerandoIA] = useState(false);
   const [errorIA, setErrorIA] = useState("");
   const [iaLista, setIaLista] = useState(false);
@@ -59,8 +51,6 @@ export default function Asistente({ evento }) {
   const fileRefCamara = useRef();
   const fileRefIAGaleria = useRef();
   const fileRefIACamara = useRef();
-  // Guarda qué modo se eligió en el catálogo justo antes de abrir el
-  // selector de foto — se usa apenas el usuario elige la imagen.
   const modoParaSubidaRef = useRef(null);
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
@@ -83,7 +73,6 @@ export default function Asistente({ evento }) {
     setEnviando(true);
     setError("");
     try {
-      // Verificar en tiempo real que el evento sigue abierto
       const { data: evActual } = await supabase.from("eventos").select("evento_cerrado").eq("id", evento.id).single();
       if (evActual?.evento_cerrado) {
         setError("Este evento ya cerró. No se pueden subir más fotos.");
@@ -112,8 +101,6 @@ export default function Asistente({ evento }) {
     }
   };
 
-  // --- Catálogo: abre el subcatálogo de Fútbol Fan, o dispara el selector
-  // de foto directo para cualquier otro modo ---
   const elegirModo = (modoId) => {
     if (modoId === "futbol_fan") {
       setStep("catalogo-futbol");
@@ -128,8 +115,6 @@ export default function Asistente({ evento }) {
     setStep("elegir-fuente-ia");
   };
 
-  // --- Handler: el usuario ya eligió modo (en el catálogo) y ahora elige
-  // la foto — dispara la generación con ese modo ---
   const tomarArchivoIA = (f) => {
     if (!f) return;
     if (!f.type.startsWith("image/")) {
@@ -153,12 +138,7 @@ export default function Asistente({ evento }) {
     reader.readAsDataURL(f);
   };
 
-  // --- Sube la foto original a Supabase, crea la tarea en WaveSpeed
-  // (api/generarFoto) y luego pregunta cada 3 seg si ya está lista
-  // (api/consultarFoto). Como cada llamada es corta, nunca chocamos con
-  // el límite de 60s de las funciones de Vercel, sin importar cuánto
-  // tarde WaveSpeed en generar. ---
-  const MAX_CONSULTAS = 40; // 40 x 3s = 2 minutos de espera máxima
+  const MAX_CONSULTAS = 40;
   const seguirGenerandoRef = useRef(true);
 
   const generarConIA = async (fileParaIA, modo) => {
@@ -183,7 +163,6 @@ export default function Asistente({ evento }) {
         .from("fotos")
         .getPublicUrl(filenameOriginal);
 
-      // Paso 1: crear la tarea — responde rápido con un taskId
       const respuestaCrear = await fetch("/api/generarFoto", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -202,9 +181,8 @@ export default function Asistente({ evento }) {
 
       const { taskId } = resultadoCrear;
 
-      // Paso 2: preguntar cada 3 seg si ya está lista
       for (let intento = 0; intento < MAX_CONSULTAS; intento++) {
-        if (!seguirGenerandoRef.current) return; // el usuario canceló/cambió de pantalla
+        if (!seguirGenerandoRef.current) return;
 
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
@@ -228,7 +206,6 @@ export default function Asistente({ evento }) {
           setGenerandoIA(false);
           return;
         }
-        // si "listo: false", el for vuelve a preguntar
       }
 
       throw new Error("La generación demoró demasiado, intenta de nuevo");
@@ -238,14 +215,12 @@ export default function Asistente({ evento }) {
     }
   };
 
-  // --- Botón "Probar otra vez": genera de nuevo con la misma foto y modo ---
   const intentarDeNuevo = () => {
     if (intentosIA >= MAX_INTENTOS_IA) return;
     setIaLista(false);
     generarConIA(file, modoSeleccionado);
   };
 
-  // --- Botón "Usar esta foto": recién aquí se vuelve visible para el operador ---
   const confirmarFotoIA = async () => {
     if (!fotoIdIA) return;
     setConfirmandoIA(true);
@@ -299,7 +274,6 @@ export default function Asistente({ evento }) {
     }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
 
-        {/* Input oculto para "Elegir de galería" en el modo normal (sin IA) */}
         <input
           ref={fileRef}
           type="file"
@@ -308,9 +282,6 @@ export default function Asistente({ evento }) {
           style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
         />
 
-        {/* Inputs ocultos para el flujo de IA — uno abre cámara directo,
-            el otro abre galería/archivos. Se disparan desde la pantalla
-            "elegir-fuente-ia". */}
         <input
           ref={fileRefIACamara}
           type="file"
@@ -327,8 +298,6 @@ export default function Asistente({ evento }) {
           style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
         />
 
-        {/* Input oculto para "Tomar foto" en la pantalla principal (modo
-            normal, sin IA) — cámara directa. */}
         <input
           ref={fileRefCamara}
           type="file"
@@ -338,7 +307,6 @@ export default function Asistente({ evento }) {
           style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
         />
 
-        {/* Cabecera del evento */}
         <header style={{ textAlign: "center", marginBottom: 24 }}>
           <div className="eyebrow" style={{ marginBottom: 8 }}>NexoLED presenta</div>
           <h1 className="display" style={{ fontSize: 26, lineHeight: 1.15 }}>{evento.nombre}</h1>
@@ -346,7 +314,6 @@ export default function Asistente({ evento }) {
 
         {step === "subir" && (
           <div className="rise">
-            {/* Tótem: la pantalla LED en miniatura, es el gesto de subida */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
               <button
                 onClick={() => setStep("elegir-fuente-normal")}
@@ -364,7 +331,6 @@ export default function Asistente({ evento }) {
                 <div className="display" style={{ fontSize: 17, lineHeight: 1.25 }}>{mensaje}</div>
                 <div style={{ fontSize: 12, color: "var(--text-dim)" }}>JPG · PNG · HEIC</div>
               </button>
-              {/* Patas del tótem */}
               <div style={{ display: "flex", gap: 26 }}>
                 {[0, 1].map((i) => (
                   <div key={i} style={{
@@ -389,8 +355,6 @@ export default function Asistente({ evento }) {
               </div>
             )}
 
-            {/* Botón que lleva al catálogo de modos IA — solo si el admin
-                dejó la IA activada para este evento. */}
             {evento?.ia_habilitada !== false && (
               <div style={{
                 marginTop: 26, paddingTop: 20,
@@ -442,7 +406,6 @@ export default function Asistente({ evento }) {
                 </button>
               ))}
 
-              {/* Fútbol Fan: lleva al subcatálogo, no dispara generación directo */}
               <button
                 onClick={() => elegirModo(MODO_FUTBOL_FAN.id)}
                 className="card"
@@ -590,7 +553,6 @@ export default function Asistente({ evento }) {
         {step === "ia" && (
           <div className="rise">
             <div className="card" style={{ textAlign: "center" }}>
-              {/* Mientras genera, muestra la foto original que subió el invitado */}
               {(generandoIA || errorIA) && preview && (
                 <img
                   src={preview}
@@ -605,7 +567,6 @@ export default function Asistente({ evento }) {
                 />
               )}
 
-              {/* Cuando está lista, muestra el RESULTADO de la IA, no la foto original */}
               {!generandoIA && iaLista && urlResultadoIA && (
                 <img
                   src={urlResultadoIA}
