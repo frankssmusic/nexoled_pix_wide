@@ -16,7 +16,7 @@ const MODOS_IA = [
   { id: "viejitos", nombre: "Viejitos" },
   { id: "harry_magic", nombre: "Harry Magic" },
   { id: "super_hero", nombre: "Super Hero" },
-  { id: "grease", nombre: "Grease" },
+  { id: "old_school", nombre: "Old School" },
   { id: "jurassic_park", nombre: "Jurassic Park" },
   { id: "simpsons", nombre: "Simpsons" },
   { id: "princesa_disney", nombre: "Princesa Disney" },
@@ -802,7 +802,7 @@ export default function Asistente({ evento }) {
 
 function Banner() {
   return (
-    <a
+    
       href="https://nexoled.cl"
       target="_blank"
       rel="noreferrer"

@@ -1,4 +1,4 @@
-import { useState } from "react";
+    import { useState } from "react";
 import { supabase } from "../supabase";
 import { ADMIN_PASSWORD, validarRut, OP_TERMS } from "../lib";
 import { cargarJSZip } from "../cdn";

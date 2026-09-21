@@ -7,9 +7,13 @@
 //
 // El frontend, después de recibir el taskId, llama repetidamente a
 // api/consultarFoto.js (cada ~3 seg) hasta que la imagen esté lista.
+//
+// NOTA: cada llamada a este endpoint elige UNA variante al azar dentro del
+// modo pedido (via getPromptAleatorio en lib/prompts.js). Si el invitado da
+// "Probar otra vez", recibirá una variante distinta del mismo modo.
 
 const { createClient } = require('@supabase/supabase-js');
-const { PROMPTS_POR_MODO, DOMINIO_BASE } = require('../lib/prompts');
+const { getPromptAleatorio, DOMINIO_BASE } = require('../lib/prompts');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -24,15 +28,16 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  const configModo = PROMPTS_POR_MODO[modo];
-  if (!configModo) {
+  // Elige una variante al azar del modo pedido.
+  // Devuelve siempre { prompt, refFija? } o null si el modo no existe.
+  const variante = getPromptAleatorio(modo);
+  if (!variante) {
     return res.status(400).json({
       error: `El modo "${modo}" todavía no está disponible`,
     });
   }
 
-  const prompt = typeof configModo === 'string' ? configModo : configModo.prompt;
-  const refFija = typeof configModo === 'string' ? null : configModo.refFija;
+  const { prompt, refFija } = variante;
 
   const imagenesParaWaveSpeed = refFija
     ? [fotoUrl, `${DOMINIO_BASE}/referencias/${refFija}`]
@@ -87,41 +92,4 @@ module.exports = async function handler(req, res) {
     const creacion = await fetch(
       'https://api.wavespeed.ai/api/v3/bytedance/seedream-v4.5/edit',
       {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.WAVESPEED_API_KEY}`,
-        },
-        body: JSON.stringify({
-          images: imagenesParaWaveSpeed,
-          prompt: prompt,
-          size: '1080*1920',
-        }),
-      }
-    );
-
-    if (!creacion.ok) {
-      const textoError = await creacion.text();
-      throw new Error(`WaveSpeed rechazó la solicitud: ${textoError}`);
-    }
-
-    const tareaCreada = await creacion.json();
-    const taskId = tareaCreada?.data?.id || tareaCreada?.id;
-
-    if (!taskId) {
-      throw new Error('WaveSpeed no devolvió un ID de tarea válido');
-    }
-
-    return res.status(200).json({
-      success: true,
-      taskId,
-      modo,
-      eventoId,
-    });
-  } catch (error) {
-    console.error('Error en generarFoto:', error);
-    return res.status(500).json({
-      error: error.message || 'Error creando la tarea de generación',
-    });
-  }
-}
+        method:
