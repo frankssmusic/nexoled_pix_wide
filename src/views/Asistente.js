@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from "react";
+import { useState, useRef } from "react";
 import { supabase } from "../supabase";
 import { comprimirImagen } from "../lib";
 import Icon from "../components/Icons";
