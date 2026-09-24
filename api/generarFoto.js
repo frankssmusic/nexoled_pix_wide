@@ -9,8 +9,9 @@
 // api/consultarFoto.js (cada ~3 seg) hasta que la imagen esté lista.
 //
 // RUTEO POR MOTOR (Sept 2026):
-// - Simpsons SIEMPRE usa Seedream 4.5, sin importar el tier del evento
-//   (confirmado en tests: es el único motor que logra el look Simpsons real).
+// - Simpsons y Barbie SIEMPRE usan Seedream 4.5, sin importar el tier del
+//   evento (4.5 logra el look caricaturesco/plástico que 5.0 no consigue,
+//   porque 5.0 fuerza demasiado realismo).
 // - Todo lo demás usa evento.motor_ia: 'base' -> Seedream 5.0 Pro (1k),
 //   'premium' -> GPT Image 2 (medium).
 // - Cada motor tiene su propio formato de body (Seedream 4.5 usa "size" en
@@ -54,10 +55,14 @@ const MOTORES = {
   },
 };
 
+// Modos que SIEMPRE usan Seedream 4.5, sin importar el tier contratado.
+// Motivo: 4.5 logra mejor el look caricaturesco/plástico que 5.0, que fuerza
+// un realismo que no sirve para estos modos.
+const MODOS_FIJOS_SEEDREAM_45 = ['simpsons', 'barbie'];
+
 // Decide qué motor usar según el modo pedido y el tier contratado por el evento.
-// Simpsons siempre fuerza 4.5, pase lo que pase con motor_ia.
 function resolverMotor(modo, motorDelEvento) {
-  if (modo === 'simpsons') {
+  if (MODOS_FIJOS_SEEDREAM_45.includes(modo)) {
     return 'seedream_4_5';
   }
   return motorDelEvento === 'premium' ? 'gpt_image_medium' : 'seedream_5_0';
@@ -131,7 +136,7 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // Resuelve qué motor usar (Simpsons fuerza 4.5; el resto sigue motor_ia).
+  // Resuelve qué motor usar (Simpsons y Barbie fuerzan 4.5; el resto sigue motor_ia).
   const motorId = resolverMotor(modo, evento.motor_ia);
   const motor = MOTORES[motorId];
 
