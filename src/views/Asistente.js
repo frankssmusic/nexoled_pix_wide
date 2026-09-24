@@ -19,10 +19,10 @@ const MODOS_IA = [
   { id: "barbie", nombre: "Barbie" },
 ];
 
-const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "FÃºtbol Fan" };
+const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
 
 const SUBMODOS_FUTBOL = [
-  { id: "futbol_fan_1", nombre: "PaÃ­ses Bajos" },
+  { id: "futbol_fan_1", nombre: "Países Bajos" },
   { id: "futbol_fan_2", nombre: "Francia" },
   { id: "futbol_fan_3", nombre: "Portugal" },
   { id: "futbol_fan_4", nombre: "Argentina" },
@@ -75,7 +75,7 @@ export default function Asistente({ evento }) {
     try {
       const { data: evActual } = await supabase.from("eventos").select("evento_cerrado").eq("id", evento.id).single();
       if (evActual?.evento_cerrado) {
-        setError("Este evento ya cerrÃ³. No se pueden subir mÃ¡s fotos.");
+        setError("Este evento ya cerró. No se pueden subir más fotos.");
         setEnviando(false);
         return;
       }
@@ -95,7 +95,7 @@ export default function Asistente({ evento }) {
       if (dbErr) throw dbErr;
       setStep("enviada");
     } catch {
-      setError("No se pudo enviar la foto. Revisa tu conexiÃ³n e intÃ©ntalo de nuevo.");
+      setError("No se pudo enviar la foto. Revisa tu conexión e inténtalo de nuevo.");
     } finally {
       setEnviando(false);
     }
@@ -176,7 +176,7 @@ export default function Asistente({ evento }) {
       const resultadoCrear = await respuestaCrear.json();
 
       if (!respuestaCrear.ok) {
-        throw new Error(resultadoCrear?.error || "Error creando la generaciÃ³n con IA");
+        throw new Error(resultadoCrear?.error || "Error creando la generación con IA");
       }
 
       const { taskId, motorUsado } = resultadoCrear;
@@ -208,7 +208,7 @@ export default function Asistente({ evento }) {
         }
       }
 
-      throw new Error("La generaciÃ³n demorÃ³ demasiado, intenta de nuevo");
+      throw new Error("La generación demoró demasiado, intenta de nuevo");
     } catch (err) {
       setErrorIA(err.message || "No se pudo generar la foto con IA. Intenta de nuevo.");
       setGenerandoIA(false);
@@ -252,7 +252,7 @@ export default function Asistente({ evento }) {
     return (
       <Vacio
         titulo="Evento no encontrado"
-        detalle="Revisa el enlace o escanea de nuevo el cÃ³digo QR del evento."
+        detalle="Revisa el enlace o escanea de nuevo el código QR del evento."
       />
     );
   }
@@ -261,8 +261,8 @@ export default function Asistente({ evento }) {
     return (
       <Vacio
         icono="inbox"
-        titulo="Este evento ya terminÃ³"
-        detalle={`"${evento.nombre}" cerrÃ³ la recepciÃ³n de fotos. Gracias por participar.`}
+        titulo="Este evento ya terminó"
+        detalle={`"${evento.nombre}" cerró la recepción de fotos. Gracias por participar.`}
       />
     );
   }
@@ -329,7 +329,7 @@ export default function Asistente({ evento }) {
               >
                 <Icon.Camera size={38} color="var(--cyan)" />
                 <div className="display" style={{ fontSize: 17, lineHeight: 1.25 }}>{mensaje}</div>
-                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>JPG Â· PNG Â· HEIC</div>
+                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>JPG · PNG · HEIC</div>
               </button>
               <div style={{ display: "flex", gap: 26 }}>
                 {[0, 1].map((i) => (
@@ -346,7 +346,7 @@ export default function Asistente({ evento }) {
               textAlign: "center", color: "var(--text-dim)", fontSize: 14,
               marginTop: 22, lineHeight: 1.6,
             }}>
-              Tu foto pasa por revisiÃ³n y aparece en la pantalla del evento.
+              Tu foto pasa por revisión y aparece en la pantalla del evento.
             </p>
 
             {error && (
@@ -384,7 +384,7 @@ export default function Asistente({ evento }) {
               marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
               lineHeight: 1.5, textAlign: "center", justifyContent: "center",
             }}>
-              ðŸ“¸ Usa una selfie con buena luz y tu rostro bien visible â€” asÃ­ la IA te reconoce mejor.
+              �Y"� Usa una selfie con buena luz y tu rostro bien visible �?" así la IA te reconoce mejor.
             </div>
 
             <div style={{
@@ -435,15 +435,15 @@ export default function Asistente({ evento }) {
         {step === "catalogo-futbol" && (
           <div className="rise">
             <div style={{ textAlign: "center", marginBottom: 18 }}>
-              <div className="eyebrow" style={{ marginBottom: 6 }}>FÃºtbol Fan</div>
-              <h2 className="display" style={{ fontSize: 20 }}>Elige tu compaÃ±ero de selfie</h2>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>Fútbol Fan</div>
+              <h2 className="display" style={{ fontSize: 20 }}>Elige tu compañero de selfie</h2>
             </div>
 
             <div className="chip" style={{
               marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
               lineHeight: 1.5, textAlign: "center", justifyContent: "center",
             }}>
-              ðŸ“¸ Usa una selfie con buena luz y tu rostro bien visible â€” asÃ­ la IA te reconoce mejor.
+              �Y"� Usa una selfie con buena luz y tu rostro bien visible �?" así la IA te reconoce mejor.
             </div>
 
             <div style={{
@@ -471,7 +471,7 @@ export default function Asistente({ evento }) {
               style={{ marginTop: 20 }}
               onClick={() => setStep("catalogo")}
             >
-              Volver al catÃ¡logo
+              Volver al catálogo
             </button>
 
             <Banner />
@@ -481,7 +481,7 @@ export default function Asistente({ evento }) {
         {step === "elegir-fuente-normal" && (
           <div className="rise">
             <div style={{ textAlign: "center", marginBottom: 24 }}>
-              <h2 className="display" style={{ fontSize: 20 }}>Â¿CÃ³mo quieres tu foto?</h2>
+              <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
             </div>
 
             <button
@@ -495,7 +495,7 @@ export default function Asistente({ evento }) {
               className="btn btn-ghost btn-block"
               onClick={() => fileRef.current?.click()}
             >
-              Elegir de galerÃ­a
+              Elegir de galería
             </button>
 
             <button
@@ -514,14 +514,14 @@ export default function Asistente({ evento }) {
           <div className="rise">
             <div style={{ textAlign: "center", marginBottom: 24 }}>
               <div className="eyebrow" style={{ marginBottom: 6 }}>FUNphoto IA</div>
-              <h2 className="display" style={{ fontSize: 20 }}>Â¿CÃ³mo quieres tu foto?</h2>
+              <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
             </div>
 
             <div className="chip" style={{
               marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
               lineHeight: 1.5, textAlign: "center", justifyContent: "center",
             }}>
-              ðŸ“¸ Usa una selfie con buena luz y tu rostro bien visible â€” asÃ­ la IA te reconoce mejor.
+              �Y"� Usa una selfie con buena luz y tu rostro bien visible �?" así la IA te reconoce mejor.
             </div>
 
             <button
@@ -535,7 +535,7 @@ export default function Asistente({ evento }) {
               className="btn btn-ghost btn-block"
               onClick={() => fileRefIAGaleria.current?.click()}
             >
-              Elegir de galerÃ­a
+              Elegir de galería
             </button>
 
             <button
@@ -543,7 +543,7 @@ export default function Asistente({ evento }) {
               style={{ marginTop: 20 }}
               onClick={() => setStep("catalogo")}
             >
-              Volver al catÃ¡logo
+              Volver al catálogo
             </button>
 
             <Banner />
@@ -583,10 +583,10 @@ export default function Asistente({ evento }) {
               {generandoIA && (
                 <>
                   <div className="display" style={{ fontSize: 17, marginBottom: 8 }}>
-                    Generando con IAâ€¦
+                    Generando con IA�?�
                   </div>
                   <p style={{ color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6 }}>
-                    Puede tardar hasta 2 minutos en modos con mÃ¡s detalle. No cierres esta pantalla.
+                    Puede tardar hasta 2 minutos en modos con más detalle. No cierres esta pantalla.
                   </p>
                 </>
               )}
@@ -594,7 +594,7 @@ export default function Asistente({ evento }) {
               {!generandoIA && iaLista && !iaConfirmada && (
                 <>
                   <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>
-                    Â¿Te gusta el resultado?
+                    ¿Te gusta el resultado?
                   </h2>
                   <p style={{ color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6, marginBottom: 6 }}>
                     Intento {intentosIA} de {MAX_INTENTOS_IA}
@@ -620,7 +620,7 @@ export default function Asistente({ evento }) {
                       onClick={confirmarFotoIA}
                       disabled={confirmandoIA}
                     >
-                      {confirmandoIA ? "Confirmandoâ€¦" : "Usar esta foto"}
+                      {confirmandoIA ? "Confirmando�?�" : "Usar esta foto"}
                     </button>
                   </div>
 
@@ -630,7 +630,7 @@ export default function Asistente({ evento }) {
 
                   <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setStep("catalogo")}>
-                      Volver al catÃ¡logo
+                      Volver al catálogo
                     </button>
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reiniciar}>
                       Ir al inicio
@@ -649,7 +649,7 @@ export default function Asistente({ evento }) {
                     <Icon.Check size={26} color="var(--cyan)" />
                   </div>
                   <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>
-                    Â¡Listo!
+                    ¡Listo!
                   </h2>
                   <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, marginBottom: 22 }}>
                     El operador la revisa y, si la aprueba, aparece en la pantalla.
@@ -671,7 +671,7 @@ export default function Asistente({ evento }) {
 
                   <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setStep("catalogo")}>
-                      Volver al catÃ¡logo
+                      Volver al catálogo
                     </button>
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reiniciar}>
                       Ir al inicio
@@ -729,7 +729,7 @@ export default function Asistente({ evento }) {
                   Cambiar
                 </button>
                 <button className="btn btn-primary" style={{ flex: 1 }} onClick={enviar} disabled={enviando}>
-                  {enviando ? "Enviandoâ€¦" : "Enviar foto"}
+                  {enviando ? "Enviando�?�" : "Enviar foto"}
                 </button>
               </div>
             </div>
@@ -775,10 +775,10 @@ function Banner() {
         borderRadius: "var(--r-lg)", textAlign: "center",
       }}>
         <div className="display" style={{ fontSize: 15, marginBottom: 6 }}>
-          Â¿Quieres esto en tu evento?
+          ¿Quieres esto en tu evento?
         </div>
         <div style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 14, lineHeight: 1.5 }}>
-          Pantallas LED para bodas, cumpleaÃ±os y eventos en Punta Arenas.
+          Pantallas LED para bodas, cumpleaños y eventos en Punta Arenas.
         </div>
         <span className="btn btn-primary btn-sm">Ver NexoLED</span>
       </div>
