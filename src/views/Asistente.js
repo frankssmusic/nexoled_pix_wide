@@ -179,7 +179,7 @@ export default function Asistente({ evento }) {
         throw new Error(resultadoCrear?.error || "Error creando la generación con IA");
       }
 
-      const { taskId } = resultadoCrear;
+      const { taskId, motorUsado } = resultadoCrear;
 
       for (let intento = 0; intento < MAX_CONSULTAS; intento++) {
         if (!seguirGenerandoRef.current) return;
@@ -189,7 +189,7 @@ export default function Asistente({ evento }) {
         const respuestaConsulta = await fetch("/api/consultarFoto", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ taskId, modo: modoAUsar, eventoId: evento.id }),
+          body: JSON.stringify({ taskId, modo: modoAUsar, eventoId: evento.id, motorUsado }),
         });
 
         const resultadoConsulta = await respuestaConsulta.json();
@@ -763,7 +763,7 @@ export default function Asistente({ evento }) {
 
 function Banner() {
   return (
-    <a
+    
       href="https://nexoled.cl"
       target="_blank"
       rel="noreferrer"

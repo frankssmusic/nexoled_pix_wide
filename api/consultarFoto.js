@@ -12,17 +12,27 @@
 // y devolvemos { listo: true, foto }. Como la imagen ya está lista en ese
 // momento, este paso final es rápido (unos segundos), muy lejos del límite
 // de 60s de Vercel.
+//
+// NOTA (Sept 2026): ahora recibe motorUsado (que generarFoto.js le pasó al
+// frontend) y lo guarda en fotos.motor_usado + calcula fotos.costo_estimado
+// según ese motor. Esto alimenta el futuro dashboard de consumo/costos.
 
 const { createClient } = require('@supabase/supabase-js');
 
-const COSTO_USD_POR_FOTO = 0.045;
+// Costo real por foto según el motor — debe coincidir con los precios
+// definidos en api/generarFoto.js (MOTORES).
+const COSTOS_POR_MOTOR = {
+  seedream_4_5: 0.045,
+  seedream_5_0: 0.045,
+  gpt_image_medium: 0.0665,
+};
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido' });
   }
 
-  const { taskId, modo, eventoId } = req.body || {};
+  const { taskId, modo, eventoId, motorUsado } = req.body || {};
 
   if (!taskId || !modo || !eventoId) {
     return res.status(400).json({
@@ -89,6 +99,11 @@ module.exports = async function handler(req, res) {
       .from('fotos')
       .getPublicUrl(nombreArchivo);
 
+    // Costo real de esta generación, según qué motor se usó.
+    // Si por algún motivo no llega motorUsado (llamada vieja o error),
+    // no rompe nada: queda null y el registro se guarda igual.
+    const costoEstimado = motorUsado ? (COSTOS_POR_MOTOR[motorUsado] ?? null) : null;
+
     // Registrar la foto como BORRADOR (igual que antes) — el operador no la
     // ve hasta que el invitado confirme con "Usar esta foto".
     const { data: fotoCreada, error: errorInsert } = await supabase
@@ -100,6 +115,8 @@ module.exports = async function handler(req, res) {
         autorizada: false,
         es_ia: true,
         modo_ia: modo,
+        motor_usado: motorUsado || null,
+        costo_estimado: costoEstimado,
       })
       .select()
       .single();
@@ -111,7 +128,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       listo: true,
       foto: fotoCreada,
-      costoAprox: COSTO_USD_POR_FOTO,
+      costoAprox: costoEstimado,
     });
   } catch (error) {
     console.error('Error en consultarFoto:', error);
