@@ -384,7 +384,7 @@ export default function Asistente({ evento }) {
               marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
               lineHeight: 1.5, textAlign: "center", justifyContent: "center",
             }}>
-              �Y"� Usa una selfie con buena luz y tu rostro bien visible �?" así la IA te reconoce mejor.
+              �Y"� Usa una selfie con buena luz y tu rostro bien visible — así la IA te reconoce mejor.
             </div>
 
             <div style={{
@@ -443,7 +443,7 @@ export default function Asistente({ evento }) {
               marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
               lineHeight: 1.5, textAlign: "center", justifyContent: "center",
             }}>
-              �Y"� Usa una selfie con buena luz y tu rostro bien visible �?" así la IA te reconoce mejor.
+              �Y"� Usa una selfie con buena luz y tu rostro bien visible — así la IA te reconoce mejor.
             </div>
 
             <div style={{
@@ -521,7 +521,7 @@ export default function Asistente({ evento }) {
               marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
               lineHeight: 1.5, textAlign: "center", justifyContent: "center",
             }}>
-              �Y"� Usa una selfie con buena luz y tu rostro bien visible �?" así la IA te reconoce mejor.
+              �Y"� Usa una selfie con buena luz y tu rostro bien visible — así la IA te reconoce mejor.
             </div>
 
             <button
@@ -583,7 +583,7 @@ export default function Asistente({ evento }) {
               {generandoIA && (
                 <>
                   <div className="display" style={{ fontSize: 17, marginBottom: 8 }}>
-                    Generando con IA�?�
+                    Generando con IA…
                   </div>
                   <p style={{ color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6 }}>
                     Puede tardar hasta 2 minutos en modos con más detalle. No cierres esta pantalla.
