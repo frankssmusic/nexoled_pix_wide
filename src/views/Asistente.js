@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { supabase } from "../supabase";
 import { comprimirImagen } from "../lib";
 import Icon from "../components/Icons";
@@ -33,6 +33,15 @@ const MODOS_DIVERTIDOS = [
 ];
 
 const esModoDivertido = (modoId) => MODOS_DIVERTIDOS.some((m) => m.id === modoId);
+
+// Mensajes que van rotando mientras la IA genera la foto.
+const MENSAJES_GENERANDO = [
+  "Aplicando el estilo a tu foto",
+  "Ajustando los detalles",
+  "Cuidando que te reconozcas",
+  "Dando los últimos toques",
+  "Algunos modos tardan un poco más, ya casi",
+];
 
 const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
 
@@ -163,6 +172,20 @@ export default function Asistente({ evento }) {
 
   const MAX_CONSULTAS = 40;
   const seguirGenerandoRef = useRef(true);
+
+  // Contador que avanza cada medio segundo mientras se genera:
+  // mueve los puntitos y cambia el mensaje cada 5 segundos.
+  const [tickGenerando, setTickGenerando] = useState(0);
+  useEffect(() => {
+    if (!generandoIA) {
+      setTickGenerando(0);
+      return;
+    }
+    const t = setInterval(() => setTickGenerando((n) => n + 1), 500);
+    return () => clearInterval(t);
+  }, [generandoIA]);
+  const puntosGenerando = ".".repeat(tickGenerando % 4);
+  const mensajeGenerando = MENSAJES_GENERANDO[Math.floor(tickGenerando / 10) % MENSAJES_GENERANDO.length];
 
   const generarConIA = async (fileParaIA, modo) => {
     const fileAUsar = fileParaIA || file;
@@ -672,11 +695,21 @@ export default function Asistente({ evento }) {
 
               {generandoIA && (
                 <>
+                  <style>{`@keyframes nexoGirar { to { transform: rotate(360deg); } }`}</style>
+                  <div style={{
+                    width: 46, height: 46, margin: "0 auto 16px", borderRadius: "50%",
+                    border: "3px solid rgba(0,229,255,0.15)",
+                    borderTopColor: "var(--cyan)",
+                    animation: "nexoGirar 0.9s linear infinite",
+                  }} />
                   <div className="display" style={{ fontSize: 17, marginBottom: 8 }}>
-                    Generando con IA...
+                    Generando con IA<span style={{ display: "inline-block", width: 24, textAlign: "left" }}>{puntosGenerando}</span>
                   </div>
-                  <p style={{ color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6 }}>
-                    Puede tardar hasta 2 minutos en modos con más detalle. No cierres esta pantalla.
+                  <p style={{ color: "var(--cyan)", fontSize: 13.5, lineHeight: 1.6, marginBottom: 6, minHeight: 22 }}>
+                    {mensajeGenerando}
+                  </p>
+                  <p style={{ color: "var(--text-dim)", fontSize: 12.5, lineHeight: 1.6 }}>
+                    Puede tardar hasta 2 minutos. No cierres esta pantalla.
                   </p>
                 </>
               )}
