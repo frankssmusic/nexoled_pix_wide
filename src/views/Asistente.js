@@ -43,6 +43,13 @@ const MENSAJES_GENERANDO = [
   "Algunos modos tardan un poco más, ya casi",
 ];
 
+// Errores donde reintentar no sirve (cuota, plan, IA apagada, evento cerrado).
+// En esos casos se muestra el mensaje real y no aparece "Intentar de nuevo".
+const ERRORES_NO_REINTENTABLES = ["límite", "plan premium", "no está disponible", "cerró"];
+
+const MENSAJE_ERROR_REINTENTABLE =
+  "La IA no pudo generar esta foto esta vez. Toca \"Intentar de nuevo\" y se creará otra versión.";
+
 const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
 
 const SUBMODOS_FUTBOL = [
@@ -62,6 +69,7 @@ export default function Asistente({ evento }) {
 
   const [generandoIA, setGenerandoIA] = useState(false);
   const [errorIA, setErrorIA] = useState("");
+  const [errorReintentable, setErrorReintentable] = useState(true);
   const [iaLista, setIaLista] = useState(false);
   const [urlResultadoIA, setUrlResultadoIA] = useState(null);
   const [fotoIdIA, setFotoIdIA] = useState(null);
@@ -193,6 +201,7 @@ export default function Asistente({ evento }) {
     if (!fileAUsar || !evento || !modoAUsar) return;
     setGenerandoIA(true);
     setErrorIA("");
+    setErrorReintentable(true);
     setIaLista(false);
     setUrlResultadoIA(null);
     seguirGenerandoRef.current = true;
@@ -256,7 +265,12 @@ export default function Asistente({ evento }) {
 
       throw new Error("La generación demoró demasiado, intenta de nuevo");
     } catch (err) {
-      setErrorIA(err.message || "No se pudo generar la foto con IA. Intenta de nuevo.");
+      const textoError = err?.message || "";
+      const noReintentable = ERRORES_NO_REINTENTABLES.some((t) =>
+        textoError.toLowerCase().includes(t)
+      );
+      setErrorReintentable(!noReintentable);
+      setErrorIA(noReintentable ? textoError : MENSAJE_ERROR_REINTENTABLE);
       setGenerandoIA(false);
     }
   };
@@ -264,6 +278,13 @@ export default function Asistente({ evento }) {
   const intentarDeNuevo = () => {
     if (intentosIA >= MAX_INTENTOS_IA) return;
     setIaLista(false);
+    generarConIA(file, modoSeleccionado);
+  };
+
+  // Tras un error: vuelve a generar con la misma foto y el mismo modo.
+  // El servidor elige otra variante al azar. No cuenta como intento.
+  const reintentarTrasError = () => {
+    if (!file || !modoSeleccionado) { reiniciar(); return; }
     generarConIA(file, modoSeleccionado);
   };
 
@@ -278,6 +299,7 @@ export default function Asistente({ evento }) {
       if (errUpdate) throw errUpdate;
       setIaConfirmada(true);
     } catch {
+      setErrorReintentable(false);
       setErrorIA("No se pudo confirmar la foto. Intenta de nuevo.");
     } finally {
       setConfirmandoIA(false);
@@ -288,7 +310,7 @@ export default function Asistente({ evento }) {
     seguirGenerandoRef.current = false;
     setStep("subir"); setPreview(null); setFile(null);
     setAutorizada(true); setError("");
-    setGenerandoIA(false); setErrorIA(""); setIaLista(false);
+    setGenerandoIA(false); setErrorIA(""); setErrorReintentable(true); setIaLista(false);
     setUrlResultadoIA(null); setFotoIdIA(null); setIntentosIA(0);
     setConfirmandoIA(false); setIaConfirmada(false); setModoSeleccionado(null);
     modoParaSubidaRef.current = null;
@@ -785,12 +807,18 @@ export default function Asistente({ evento }) {
 
               {!generandoIA && errorIA && (
                 <>
-                  <div className="chip chip-danger" style={{ marginBottom: 18, width: "100%", justifyContent: "center" }}>
+                  <div className="chip chip-danger" style={{
+                    marginBottom: 18, width: "100%", justifyContent: "center",
+                    lineHeight: 1.5, textAlign: "center", padding: "10px 14px",
+                  }}>
                     {errorIA}
                   </div>
-                  <button className="btn btn-ghost btn-block" onClick={reiniciar}>
-                    Volver a intentar
-                  </button>
+
+                  {errorReintentable && (
+                    <button className="btn btn-primary btn-block" onClick={reintentarTrasError}>
+                      Intentar de nuevo
+                    </button>
+                  )}
 
                   <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={volverAlCatalogo}>
