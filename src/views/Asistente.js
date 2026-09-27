@@ -806,11 +806,12 @@ export default function Asistente({ evento }) {
 
 function Banner() {
   return (
-    
-      href="https://nexoled.cl"
-      target="_blank"
-      rel="noreferrer"
-      style={{ textDecoration: "none", display: "block", marginTop: 22 }}
+    <button
+      onClick={() => window.open("https://nexoled.cl", "_blank", "noopener,noreferrer")}
+      style={{
+        display: "block", width: "100%", marginTop: 22, padding: 0,
+        background: "none", border: "none", cursor: "pointer", textAlign: "center",
+      }}
     >
       <div style={{
         padding: 18, background: "var(--surface)", border: "1px solid var(--border)",
@@ -824,6 +825,6 @@ function Banner() {
         </div>
         <span className="btn btn-primary btn-sm">Ver NexoLED</span>
       </div>
-    </a>
+    </button>
   );
 }
