@@ -19,6 +19,19 @@ const MODOS_IA = [
   { id: "barbie", nombre: "Barbie" },
 ];
 
+// Bloque DIVERTIDOS: filtros tipo Snapchat, solo visibles en eventos premium.
+// El servidor (api/generarFoto.js) también los bloquea si el evento no es premium.
+const MODOS_DIVERTIDOS = [
+  { id: "ojos_saltones", nombre: "Ojos Saltones" },
+  { id: "maquillaje_tia", nombre: "Maquillaje de Tía" },
+  { id: "chimuela_cachetona", nombre: "Chimuela Cachetona" },
+  { id: "cambio_genero", nombre: "Al Revés" },
+  { id: "cara_pescado", nombre: "Cara de Pescado" },
+  { id: "cara_bebe", nombre: "Cara de Bebé" },
+  { id: "cabezones", nombre: "Cabezones" },
+  { id: "cara_aplastada", nombre: "Cara Aplastada" },
+];
+
 const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
 
 const SUBMODOS_FUTBOL = [
@@ -54,6 +67,7 @@ export default function Asistente({ evento }) {
   const modoParaSubidaRef = useRef(null);
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
+  const esPremium = evento?.motor_ia === "premium";
 
   const tomarArchivo = (f) => {
     if (!f) return;
@@ -384,7 +398,7 @@ export default function Asistente({ evento }) {
               marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
               lineHeight: 1.5, textAlign: "center", justifyContent: "center",
             }}>
-              �Y"� Usa una selfie con buena luz y tu rostro bien visible — así la IA te reconoce mejor.
+              Consejo: usa una selfie con buena luz y tu rostro bien visible, así la IA te reconoce mejor.
             </div>
 
             <div style={{
@@ -420,6 +434,35 @@ export default function Asistente({ evento }) {
               </button>
             </div>
 
+            {esPremium && (
+              <>
+                <div style={{ textAlign: "center", marginTop: 28, marginBottom: 14 }}>
+                  <div className="eyebrow" style={{ marginBottom: 6 }}>Solo en este evento</div>
+                  <h2 className="display" style={{ fontSize: 20 }}>Divertidos</h2>
+                </div>
+
+                <div style={{
+                  display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
+                }}>
+                  {MODOS_DIVERTIDOS.map((modo) => (
+                    <button
+                      key={modo.id}
+                      onClick={() => elegirModo(modo.id)}
+                      className="card"
+                      style={{
+                        aspectRatio: "1 / 1", display: "flex", alignItems: "center",
+                        justifyContent: "center", textAlign: "center", padding: 12,
+                        cursor: "pointer", border: "1px solid var(--cyan)",
+                        background: "var(--surface)",
+                      }}
+                    >
+                      <span className="display" style={{ fontSize: 14, color: "#fff" }}>{modo.nombre}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
             <button
               className="btn btn-ghost btn-block"
               style={{ marginTop: 20 }}
@@ -443,7 +486,7 @@ export default function Asistente({ evento }) {
               marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
               lineHeight: 1.5, textAlign: "center", justifyContent: "center",
             }}>
-              �Y"� Usa una selfie con buena luz y tu rostro bien visible — así la IA te reconoce mejor.
+              Consejo: usa una selfie con buena luz y tu rostro bien visible, así la IA te reconoce mejor.
             </div>
 
             <div style={{
@@ -521,7 +564,7 @@ export default function Asistente({ evento }) {
               marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
               lineHeight: 1.5, textAlign: "center", justifyContent: "center",
             }}>
-              �Y"� Usa una selfie con buena luz y tu rostro bien visible — así la IA te reconoce mejor.
+              Consejo: usa una selfie con buena luz y tu rostro bien visible, así la IA te reconoce mejor.
             </div>
 
             <button
@@ -583,7 +626,7 @@ export default function Asistente({ evento }) {
               {generandoIA && (
                 <>
                   <div className="display" style={{ fontSize: 17, marginBottom: 8 }}>
-                    Generando con IA…
+                    Generando con IA...
                   </div>
                   <p style={{ color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6 }}>
                     Puede tardar hasta 2 minutos en modos con más detalle. No cierres esta pantalla.
@@ -620,7 +663,7 @@ export default function Asistente({ evento }) {
                       onClick={confirmarFotoIA}
                       disabled={confirmandoIA}
                     >
-                      {confirmandoIA ? "Confirmando�?�" : "Usar esta foto"}
+                      {confirmandoIA ? "Confirmando..." : "Usar esta foto"}
                     </button>
                   </div>
 
@@ -729,7 +772,7 @@ export default function Asistente({ evento }) {
                   Cambiar
                 </button>
                 <button className="btn btn-primary" style={{ flex: 1 }} onClick={enviar} disabled={enviando}>
-                  {enviando ? "Enviando�?�" : "Enviar foto"}
+                  {enviando ? "Enviando..." : "Enviar foto"}
                 </button>
               </div>
             </div>
@@ -764,7 +807,6 @@ export default function Asistente({ evento }) {
 function Banner() {
   return (
     
-    <a
       href="https://nexoled.cl"
       target="_blank"
       rel="noreferrer"
