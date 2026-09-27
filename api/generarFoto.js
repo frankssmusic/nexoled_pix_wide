@@ -1,7 +1,7 @@
 // api/generarFoto.js
 //
 // PASO 1 del flujo de 2 pasos. Esta función SOLO crea la tarea en WaveSpeed
-// y devuelve el taskId de inmediato — no espera el resultado. Así nunca se
+// y devuelve el taskId de inmediato, no espera el resultado. Así nunca se
 // acerca al límite de 60s de Vercel, sin importar cuánto tarde WaveSpeed en
 // generar la imagen.
 //
@@ -12,6 +12,9 @@
 // - Simpsons y Barbie SIEMPRE usan Seedream 4.5, sin importar el tier del
 //   evento (4.5 logra el look caricaturesco/plástico que 5.0 no consigue,
 //   porque 5.0 fuerza demasiado realismo).
+// - Los modos del bloque DIVERTIDOS SIEMPRE usan GPT Image 2 (medium) y
+//   solo están disponibles en eventos premium. Si un evento base intenta
+//   usarlos, el servidor rechaza la solicitud.
 // - Todo lo demás usa evento.motor_ia: 'base' -> Seedream 5.0 Pro (1k),
 //   'premium' -> GPT Image 2 (medium).
 // - Cada motor tiene su propio formato de body (Seedream 4.5 usa "size" en
@@ -60,10 +63,26 @@ const MOTORES = {
 // un realismo que no sirve para estos modos.
 const MODOS_FIJOS_SEEDREAM_45 = ['simpsons', 'barbie'];
 
+// Bloque DIVERTIDOS: filtros tipo Snapchat. SIEMPRE usan GPT Image y SOLO
+// están disponibles en eventos premium.
+const MODOS_DIVERTIDOS = [
+  'ojos_saltones',
+  'maquillaje_tia',
+  'chimuela_cachetona',
+  'cambio_genero',
+  'cara_pescado',
+  'cara_bebe',
+  'cabezones',
+  'cara_aplastada',
+];
+
 // Decide qué motor usar según el modo pedido y el tier contratado por el evento.
 function resolverMotor(modo, motorDelEvento) {
   if (MODOS_FIJOS_SEEDREAM_45.includes(modo)) {
     return 'seedream_4_5';
+  }
+  if (MODOS_DIVERTIDOS.includes(modo)) {
+    return 'gpt_image_medium';
   }
   return motorDelEvento === 'premium' ? 'gpt_image_medium' : 'seedream_5_0';
 }
@@ -118,6 +137,13 @@ module.exports = async function handler(req, res) {
     });
   }
 
+  // Los modos DIVERTIDOS solo están incluidos en el plan premium.
+  if (MODOS_DIVERTIDOS.includes(modo) && evento?.motor_ia !== 'premium') {
+    return res.status(403).json({
+      error: 'Este modo solo está disponible en el plan premium',
+    });
+  }
+
   if (evento?.cuota_ia !== null && evento?.cuota_ia !== undefined) {
     const { count, error: errorConteo } = await supabase
       .from('fotos')
@@ -136,13 +162,14 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // Resuelve qué motor usar (Simpsons y Barbie fuerzan 4.5; el resto sigue motor_ia).
+  // Resuelve qué motor usar (Simpsons y Barbie fuerzan 4.5, DIVERTIDOS fuerzan GPT;
+  // el resto sigue motor_ia).
   const motorId = resolverMotor(modo, evento.motor_ia);
   const motor = MOTORES[motorId];
 
   try {
     // ---------------------------------------------------------------------
-    // Solo CREA la tarea — no espera el resultado.
+    // Solo CREA la tarea, no espera el resultado.
     // ---------------------------------------------------------------------
     const creacion = await fetch(motor.endpoint, {
       method: 'POST',
