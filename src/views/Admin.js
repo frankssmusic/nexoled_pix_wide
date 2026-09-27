@@ -6,10 +6,17 @@ import { cargarJSZip, cargarXLSX } from "../cdn";
 import Icon from "../components/Icons";
 import { Logo, Toast, Stat, Vacio, Modal } from "../components/UI";
 
-const COSTO_USD_POR_FOTO_IA = 0.045;
+// Costo por foto IA según el motor del evento (precios públicos de WaveSpeed).
+// base -> Seedream 5.0 Pro 1k | premium -> GPT Image 2 medium
+const COSTOS_USD_POR_FOTO_IA = { base: 0.045, premium: 0.0665 };
 // Ajusta este valor cuando cambie el tipo de cambio. Es solo una referencia
 // aproximada para que veas el costo máximo estimado en pesos.
 const CLP_POR_USD = 950;
+
+const TIERS = [
+  { id: "base", nombre: "Base" },
+  { id: "premium", nombre: "Premium" },
+];
 
 export default function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -23,6 +30,7 @@ export default function Admin() {
   const [verCerrados, setVerCerrados] = useState(false);
   const [creando, setCreando] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
+  const [nuevoMotor, setNuevoMotor] = useState("base");
   const [expandido, setExpandido] = useState(null);
   const [qrModal, setQrModal] = useState(null);
   const [editando, setEditando] = useState({});      // { [eventoId]: { nombre, clave, invitados } }
@@ -79,9 +87,11 @@ export default function Admin() {
         mensaje_subida: "Subir foto",
         session_version: 1,
         ia_habilitada: true,
+        motor_ia: nuevoMotor,
       });
       if (err) throw err;
       setNuevoNombre("");
+      setNuevoMotor("base");
       setToast(`Evento creado: ${slug}`);
       cargarEventos();
     } catch {
@@ -146,7 +156,7 @@ export default function Admin() {
     const { data: fs } = await supabase
       .from("fotos").select("*").eq("evento_id", ev.id).eq("status", "approved");
     if (!fs?.length) { setToast("No hay fotos aprobadas"); return; }
-    setToast("Preparando descarga…");
+    setToast("Preparando descarga...");
     try {
       const JSZip = await cargarJSZip();
       const zip = new JSZip();
@@ -204,8 +214,14 @@ export default function Admin() {
     await actualizar(ev, {
       clave_operador: nueva,
       session_version: (ev.session_version || 1) + 1,
-    }, "Clave regenerada — sesiones anteriores expiradas");
+    }, "Clave regenerada, sesiones anteriores expiradas");
     setEditando((prev) => ({ ...prev, [ev.id]: { ...prev[ev.id], clave: nueva } }));
+  };
+
+  const cambiarTier = (ev, motor) => {
+    if ((ev.motor_ia || "base") === motor) return;
+    actualizar(ev, { motor_ia: motor },
+      motor === "premium" ? "Evento cambiado a Premium" : "Evento cambiado a Base");
   };
 
   const copiar = (texto, etiqueta) => {
@@ -327,9 +343,15 @@ export default function Admin() {
             onChange={(e) => setNuevoNombre(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && crearEvento()} />
           <button className="btn btn-primary" onClick={crearEvento} disabled={creando}>
-            <Icon.Plus size={16} /> {creando ? "Creando…" : "Crear"}
+            <Icon.Plus size={16} /> {creando ? "Creando..." : "Crear"}
           </button>
         </div>
+
+        <div style={{ marginTop: 12 }}>
+          <label className="label">Plan contratado</label>
+          <SelectorTier valor={nuevoMotor} onChange={setNuevoMotor} />
+        </div>
+
         {nuevoNombre.trim() && (
           <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10 }}>
             Dirección: /subir/{generarSlug(nuevoNombre)}
@@ -355,7 +377,7 @@ export default function Admin() {
 
       {/* Lista de eventos */}
       {cargando ? (
-        <div className="card"><Vacio titulo="Cargando eventos…" /></div>
+        <div className="card"><Vacio titulo="Cargando eventos..." /></div>
       ) : listaVisible.length === 0 ? (
         <div className="card">
           <Vacio icono="screen"
@@ -369,9 +391,11 @@ export default function Admin() {
             const abierto = expandido === ev.id;
             const urls = urlsDe(ev.slug);
             const camposEd = editando[ev.id] || {};
+            const tierEv = ev.motor_ia === "premium" ? "premium" : "base";
+            const costoPorFoto = COSTOS_USD_POR_FOTO_IA[tierEv];
             const invitadosVista = camposEd.invitados ?? (ev.invitados ?? "");
             const cuotaVista = invitadosVista ? parseInt(invitadosVista, 10) * 2 : ev.cuota_ia;
-            const costoUsdVista = cuotaVista ? (cuotaVista * COSTO_USD_POR_FOTO_IA) : null;
+            const costoUsdVista = cuotaVista ? (cuotaVista * costoPorFoto) : null;
             const costoClpVista = costoUsdVista ? Math.round(costoUsdVista * CLP_POR_USD) : null;
 
             return (
@@ -385,6 +409,11 @@ export default function Admin() {
                         <span className={`dot ${ev.evento_cerrado ? "dot-closed" : "dot-live"}`} />
                         {ev.evento_cerrado ? "Cerrado" : "En vivo"}
                       </span>
+                      {tierEv === "premium" && (
+                        <span className="chip" style={{ color: "var(--magenta)", borderColor: "var(--magenta)" }}>
+                          Premium
+                        </span>
+                      )}
                       {c.pending > 0 && !ev.evento_cerrado && (
                         <span className="chip chip-warn">{c.pending} por revisar</span>
                       )}
@@ -460,7 +489,18 @@ export default function Admin() {
                           </button>
                         </div>
                         <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
-                          El ↻ genera una clave nueva y expira las sesiones activas.
+                          El botón de refrescar genera una clave nueva y expira las sesiones activas.
+                        </div>
+                      </div>
+
+                      {/* --- Plan contratado (tier) --- */}
+                      <div>
+                        <label className="label">Plan contratado</label>
+                        <SelectorTier valor={tierEv} onChange={(motor) => cambiarTier(ev, motor)} />
+                        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
+                          {tierEv === "premium"
+                            ? "Premium: motor GPT Image + modos Divertidos. Se guarda al tocarlo."
+                            : "Base: motor Seedream 5, sin modos Divertidos. Se guarda al tocarlo."}
                         </div>
                       </div>
 
@@ -494,7 +534,7 @@ export default function Admin() {
                               </span>
                             </div>
                             <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
-                              Calculado como invitados × 2 fotos, a ${COSTO_USD_POR_FOTO_IA} USD c/u. Tipo de cambio referencial ${CLP_POR_USD}/USD.
+                              Calculado como invitados × 2 fotos, a ${costoPorFoto} USD c/u (plan {tierEv}). Tipo de cambio referencial ${CLP_POR_USD}/USD.
                             </div>
                           </div>
                         ) : (
@@ -508,8 +548,8 @@ export default function Admin() {
                       <Fila
                         titulo="FUNphoto IA"
                         detalle={ev.ia_habilitada === false
-                          ? "Desactivada — el botón no aparece para los invitados"
-                          : "Activada — los invitados pueden generar fotos con IA"}
+                          ? "Desactivada: el botón no aparece para los invitados"
+                          : "Activada: los invitados pueden generar fotos con IA"}
                         activo={ev.ia_habilitada !== false}
                         onToggle={() => actualizar(ev, { ia_habilitada: ev.ia_habilitada === false },
                           ev.ia_habilitada === false ? "IA activada" : "IA desactivada")}
@@ -521,7 +561,7 @@ export default function Admin() {
                         disabled={guardando === ev.id}
                         style={{ marginTop: 4 }}
                       >
-                        {guardando === ev.id ? "Guardando…" : "Guardar cambios"}
+                        {guardando === ev.id ? "Guardando..." : "Guardar cambios"}
                       </button>
                     </div>
 
@@ -545,7 +585,7 @@ export default function Admin() {
                       ))}
                     </div>
 
-                    {/* Controles — distintos según estado */}
+                    {/* Controles: distintos según estado */}
                     {ev.evento_cerrado ? (
                       <>
                         <div className="label">Acciones</div>
@@ -692,6 +732,34 @@ export default function Admin() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* Selector de plan: Base / Premium */
+function SelectorTier({ valor, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      {TIERS.map((t) => {
+        const activo = valor === t.id;
+        const esPremium = t.id === "premium";
+        const colorActivo = esPremium ? "var(--magenta)" : "var(--cyan)";
+        return (
+          <button
+            key={t.id}
+            onClick={() => onChange(t.id)}
+            style={{
+              flex: 1, cursor: "pointer", padding: "10px 16px", borderRadius: 100, fontSize: 13,
+              fontFamily: "var(--font-body)", fontWeight: 500,
+              background: activo ? (esPremium ? "rgba(224,64,251,0.12)" : "var(--tint-cyan)") : "transparent",
+              border: `1px solid ${activo ? colorActivo : "var(--border)"}`,
+              color: activo ? colorActivo : "var(--text-dim)",
+            }}
+          >
+            {t.nombre}
+          </button>
+        );
+      })}
     </div>
   );
 }
