@@ -32,6 +32,8 @@ const MODOS_DIVERTIDOS = [
   { id: "cara_aplastada", nombre: "Cara Aplastada" },
 ];
 
+const esModoDivertido = (modoId) => MODOS_DIVERTIDOS.some((m) => m.id === modoId);
+
 const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
 
 const SUBMODOS_FUTBOL = [
@@ -68,6 +70,13 @@ export default function Asistente({ evento }) {
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
   const esPremium = evento?.motor_ia === "premium";
+
+  // Vuelve al submenú Divertidos si el modo elegido es de ese bloque;
+  // si no, al catálogo general.
+  const volverAlCatalogo = () => {
+    const modoActual = modoParaSubidaRef.current || modoSeleccionado;
+    setStep(esModoDivertido(modoActual) ? "catalogo-divertidos" : "catalogo");
+  };
 
   const tomarArchivo = (f) => {
     if (!f) return;
@@ -401,6 +410,27 @@ export default function Asistente({ evento }) {
               Consejo: usa una selfie con buena luz y tu rostro bien visible, así la IA te reconoce mejor.
             </div>
 
+            {esPremium && (
+              <button
+                onClick={() => setStep("catalogo-divertidos")}
+                className="card"
+                style={{
+                  width: "100%", marginBottom: 16, padding: "22px 16px",
+                  display: "flex", flexDirection: "column", alignItems: "center",
+                  justifyContent: "center", gap: 8, textAlign: "center", cursor: "pointer",
+                  border: "1px solid var(--magenta)",
+                  background: "linear-gradient(135deg, rgba(224,64,251,0.14), rgba(0,229,255,0.08))",
+                  boxShadow: "0 0 30px rgba(224,64,251,0.15)",
+                }}
+              >
+                <span className="eyebrow" style={{ color: "var(--magenta)" }}>Exclusivo de este evento</span>
+                <span className="display" style={{ fontSize: 22, color: "#fff" }}>Divertidos</span>
+                <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+                  Filtros chistosos para reírse en grupo
+                </span>
+              </button>
+            )}
+
             <div style={{
               display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
             }}>
@@ -434,41 +464,58 @@ export default function Asistente({ evento }) {
               </button>
             </div>
 
-            {esPremium && (
-              <>
-                <div style={{ textAlign: "center", marginTop: 28, marginBottom: 14 }}>
-                  <div className="eyebrow" style={{ marginBottom: 6 }}>Solo en este evento</div>
-                  <h2 className="display" style={{ fontSize: 20 }}>Divertidos</h2>
-                </div>
-
-                <div style={{
-                  display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
-                }}>
-                  {MODOS_DIVERTIDOS.map((modo) => (
-                    <button
-                      key={modo.id}
-                      onClick={() => elegirModo(modo.id)}
-                      className="card"
-                      style={{
-                        aspectRatio: "1 / 1", display: "flex", alignItems: "center",
-                        justifyContent: "center", textAlign: "center", padding: 12,
-                        cursor: "pointer", border: "1px solid var(--cyan)",
-                        background: "var(--surface)",
-                      }}
-                    >
-                      <span className="display" style={{ fontSize: 14, color: "#fff" }}>{modo.nombre}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
             <button
               className="btn btn-ghost btn-block"
               style={{ marginTop: 20 }}
               onClick={() => setStep("subir")}
             >
               Volver
+            </button>
+
+            <Banner />
+          </div>
+        )}
+
+        {step === "catalogo-divertidos" && (
+          <div className="rise">
+            <div style={{ textAlign: "center", marginBottom: 18 }}>
+              <div className="eyebrow" style={{ marginBottom: 6, color: "var(--magenta)" }}>Exclusivo de este evento</div>
+              <h2 className="display" style={{ fontSize: 20 }}>Divertidos</h2>
+            </div>
+
+            <div className="chip" style={{
+              marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
+              lineHeight: 1.5, textAlign: "center", justifyContent: "center",
+            }}>
+              Consejo: salen mejor con la cara de frente y bien iluminada. Funcionan con una o varias personas.
+            </div>
+
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
+            }}>
+              {MODOS_DIVERTIDOS.map((modo) => (
+                <button
+                  key={modo.id}
+                  onClick={() => elegirModo(modo.id)}
+                  className="card"
+                  style={{
+                    aspectRatio: "1 / 1", display: "flex", alignItems: "center",
+                    justifyContent: "center", textAlign: "center", padding: 12,
+                    cursor: "pointer", border: "1px solid var(--magenta)",
+                    background: "var(--surface)",
+                  }}
+                >
+                  <span className="display" style={{ fontSize: 14, color: "#fff" }}>{modo.nombre}</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              className="btn btn-ghost btn-block"
+              style={{ marginTop: 20 }}
+              onClick={() => setStep("catalogo")}
+            >
+              Volver al catálogo
             </button>
 
             <Banner />
@@ -584,7 +631,7 @@ export default function Asistente({ evento }) {
             <button
               className="btn btn-ghost btn-block"
               style={{ marginTop: 20 }}
-              onClick={() => setStep("catalogo")}
+              onClick={volverAlCatalogo}
             >
               Volver al catálogo
             </button>
@@ -672,7 +719,7 @@ export default function Asistente({ evento }) {
                   </button>
 
                   <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setStep("catalogo")}>
+                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={volverAlCatalogo}>
                       Volver al catálogo
                     </button>
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reiniciar}>
@@ -713,7 +760,7 @@ export default function Asistente({ evento }) {
                   </button>
 
                   <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setStep("catalogo")}>
+                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={volverAlCatalogo}>
                       Volver al catálogo
                     </button>
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reiniciar}>
