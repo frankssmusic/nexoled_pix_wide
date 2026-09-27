@@ -9,14 +9,28 @@ import { Logo, Toast, Stat, Vacio, Modal } from "../components/UI";
 // Costo por foto IA según el motor del evento (precios públicos de WaveSpeed).
 // base -> Seedream 5.0 Pro 1k | premium -> GPT Image 2 medium
 const COSTOS_USD_POR_FOTO_IA = { base: 0.045, premium: 0.0665 };
-// Ajusta este valor cuando cambie el tipo de cambio. Es solo una referencia
-// aproximada para que veas el costo máximo estimado en pesos.
-const CLP_POR_USD = 950;
+
+// Dólar de respaldo si no se puede obtener el del día desde mindicador.cl.
+const CLP_POR_USD_RESPALDO = 950;
+
+// Precio sugerido: costo x 1,4 (40% de utilidad sobre el costo) x 1,19 (IVA).
+const FACTOR_UTILIDAD = 1.4;
+const TASA_IVA = 0.19;
 
 const TIERS = [
   { id: "base", nombre: "Base" },
   { id: "premium", nombre: "Premium" },
 ];
+
+// Planes de fotos por persona.
+const PLANES_FOTOS = [
+  { id: "estandar", nombre: "Estándar", fotos: 2 },
+  { id: "funplus", nombre: "FunPlus", fotos: 4 },
+  { id: "maxfun", nombre: "MaxFun", fotos: 15 },
+];
+
+const planPorId = (id) => PLANES_FOTOS.find((p) => p.id === id) || PLANES_FOTOS[0];
+const clp = (n) => `$${Math.round(n).toLocaleString("es-CL")}`;
 
 export default function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -33,11 +47,30 @@ export default function Admin() {
   const [nuevoMotor, setNuevoMotor] = useState("base");
   const [expandido, setExpandido] = useState(null);
   const [qrModal, setQrModal] = useState(null);
-  const [editando, setEditando] = useState({});      // { [eventoId]: { nombre, clave, invitados } }
+  const [editando, setEditando] = useState({});      // { [eventoId]: { nombre, clave, invitados, plan } }
   const [guardando, setGuardando] = useState(null);  // eventoId que está guardando
+  const [extraInput, setExtraInput] = useState({});  // { [eventoId]: "50" }
   const [operadores, setOperadores] = useState([]);
   const [verOps, setVerOps] = useState(false);
   const [opsSel, setOpsSel] = useState([]);
+  const [dolar, setDolar] = useState({ valor: CLP_POR_USD_RESPALDO, fecha: null, oficial: false });
+
+  /* ---------- Dólar del día (mindicador.cl, dólar observado Banco Central) ---------- */
+  useEffect(() => {
+    if (!loggedIn) return;
+    (async () => {
+      try {
+        const r = await fetch("https://mindicador.cl/api/dolar");
+        const d = await r.json();
+        const ultimo = d?.serie?.[0];
+        if (ultimo?.valor) {
+          setDolar({ valor: ultimo.valor, fecha: ultimo.fecha, oficial: true });
+        }
+      } catch {
+        // Si falla, queda el valor de respaldo.
+      }
+    })();
+  }, [loggedIn]);
 
   /* ---------- Cargar eventos + conteo de fotos ---------- */
   const cargarEventos = useCallback(async () => {
@@ -88,6 +121,8 @@ export default function Admin() {
         session_version: 1,
         ia_habilitada: true,
         motor_ia: nuevoMotor,
+        cuota_plan: "estandar",
+        fotos_por_persona: 2,
       });
       if (err) throw err;
       setNuevoNombre("");
@@ -173,6 +208,14 @@ export default function Admin() {
     } catch { setToast("No se pudo generar la descarga"); }
   };
 
+  /* Fotos extra agregadas a mano: lo que la cuota guardada tiene por
+     sobre invitados x fotos por persona. Así no se pierden al recalcular. */
+  const calcularExtra = (ev) => {
+    const fpp = ev.fotos_por_persona || planPorId(ev.cuota_plan).fotos;
+    const base = (ev.invitados || 0) * fpp;
+    return Math.max(0, (ev.cuota_ia || 0) - base);
+  };
+
   /* Inicializa los campos de edición al expandir un evento */
   const abrirExpandido = (ev) => {
     const abierto = expandido === ev.id;
@@ -184,6 +227,7 @@ export default function Admin() {
           nombre: ev.nombre,
           clave: ev.clave_operador,
           invitados: ev.invitados ?? "",
+          plan: ev.cuota_plan || "estandar",
         },
       }));
     }
@@ -194,19 +238,35 @@ export default function Admin() {
     if (!campos?.nombre?.trim()) { setToast("El nombre no puede estar vacío"); return; }
     setGuardando(ev.id);
 
+    const plan = planPorId(campos.plan);
     const invitadosNum = campos.invitados === "" ? null : parseInt(campos.invitados, 10);
-    const cuotaCalculada = invitadosNum ? invitadosNum * 2 : null;
+    const extra = calcularExtra(ev);
+    const cuotaCalculada = invitadosNum ? invitadosNum * plan.fotos + extra : null;
 
     const { error: err } = await supabase.from("eventos").update({
       nombre: campos.nombre.trim(),
       clave_operador: campos.clave.trim() || ev.clave_operador,
       invitados: invitadosNum,
+      cuota_plan: plan.id,
+      fotos_por_persona: plan.fotos,
       cuota_ia: cuotaCalculada,
     }).eq("id", ev.id);
     setGuardando(null);
     if (err) { setToast("No se pudo guardar"); return; }
     setToast("Configuración guardada");
     cargarEventos();
+  };
+
+  const agregarCuota = (ev) => {
+    const n = parseInt(extraInput[ev.id], 10);
+    if (!n || n <= 0) { setToast("Escribe cuántas fotos agregar"); return; }
+    if (ev.cuota_ia === null || ev.cuota_ia === undefined) {
+      setToast("Primero define los invitados y guarda la configuración");
+      return;
+    }
+    const nueva = ev.cuota_ia + n;
+    actualizar(ev, { cuota_ia: nueva }, `Se agregaron ${n} fotos. Cuota total: ${nueva}`);
+    setExtraInput((prev) => ({ ...prev, [ev.id]: "" }));
   };
 
   const regenerarClave = async (ev) => {
@@ -327,6 +387,11 @@ export default function Admin() {
         <div>
           <Logo size={24} />
           <div className="eyebrow" style={{ marginTop: 10 }}>Panel de administración</div>
+          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 6 }}>
+            {dolar.oficial
+              ? `Dólar observado hoy: ${clp(dolar.valor)} (mindicador.cl)`
+              : `Dólar referencial: ${clp(dolar.valor)} (no se pudo obtener el del día)`}
+          </div>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={cargarEventos} title="Actualizar estado">
           <Icon.Refresh size={16} /> Actualizar
@@ -348,8 +413,8 @@ export default function Admin() {
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <label className="label">Plan contratado</label>
-          <SelectorTier valor={nuevoMotor} onChange={setNuevoMotor} />
+          <label className="label">Tier contratado</label>
+          <SelectorPills opciones={TIERS} valor={nuevoMotor} onChange={setNuevoMotor} destacado="premium" />
         </div>
 
         {nuevoNombre.trim() && (
@@ -393,10 +458,19 @@ export default function Admin() {
             const camposEd = editando[ev.id] || {};
             const tierEv = ev.motor_ia === "premium" ? "premium" : "base";
             const costoPorFoto = COSTOS_USD_POR_FOTO_IA[tierEv];
+
+            const planVista = planPorId(camposEd.plan ?? ev.cuota_plan);
+            const planGuardado = planPorId(ev.cuota_plan);
+            const extra = calcularExtra(ev);
             const invitadosVista = camposEd.invitados ?? (ev.invitados ?? "");
-            const cuotaVista = invitadosVista ? parseInt(invitadosVista, 10) * 2 : ev.cuota_ia;
-            const costoUsdVista = cuotaVista ? (cuotaVista * costoPorFoto) : null;
-            const costoClpVista = costoUsdVista ? Math.round(costoUsdVista * CLP_POR_USD) : null;
+            const invNum = parseInt(invitadosVista, 10) || 0;
+            const cuotaVista = invNum ? invNum * planVista.fotos + extra : (ev.cuota_ia || 0);
+
+            const costoUsd = cuotaVista * costoPorFoto;
+            const costoClp = costoUsd * dolar.valor;
+            const precioNeto = costoClp * FACTOR_UTILIDAD;
+            const ivaClp = precioNeto * TASA_IVA;
+            const precioTotal = precioNeto + ivaClp;
 
             return (
               <div key={ev.id} className="card">
@@ -414,6 +488,7 @@ export default function Admin() {
                           Premium
                         </span>
                       )}
+                      <span className="chip">{planGuardado.nombre}</span>
                       {c.pending > 0 && !ev.evento_cerrado && (
                         <span className="chip chip-warn">{c.pending} por revisar</span>
                       )}
@@ -423,6 +498,7 @@ export default function Admin() {
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 6 }}>
                       /{ev.slug} · clave {ev.evento_cerrado ? "expirada" : ev.clave_operador}
+                      {ev.cuota_ia ? ` · cuota ${ev.cuota_ia} fotos IA` : " · sin cuota definida"}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -493,10 +569,11 @@ export default function Admin() {
                         </div>
                       </div>
 
-                      {/* --- Plan contratado (tier) --- */}
+                      {/* --- Tier contratado --- */}
                       <div>
-                        <label className="label">Plan contratado</label>
-                        <SelectorTier valor={tierEv} onChange={(motor) => cambiarTier(ev, motor)} />
+                        <label className="label">Tier contratado</label>
+                        <SelectorPills opciones={TIERS} valor={tierEv}
+                          onChange={(motor) => cambiarTier(ev, motor)} destacado="premium" />
                         <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
                           {tierEv === "premium"
                             ? "Premium: motor GPT Image + modos Divertidos. Se guarda al tocarlo."
@@ -504,7 +581,20 @@ export default function Admin() {
                         </div>
                       </div>
 
-                      {/* --- Cuota de fotos IA por invitados --- */}
+                      {/* --- Plan de fotos --- */}
+                      <div>
+                        <label className="label">Plan de fotos por persona</label>
+                        <SelectorPills
+                          opciones={PLANES_FOTOS.map((p) => ({ id: p.id, nombre: `${p.nombre} (${p.fotos})` }))}
+                          valor={planVista.id}
+                          onChange={(id) => setEditando((prev) => ({
+                            ...prev,
+                            [ev.id]: { ...prev[ev.id], plan: id },
+                          }))}
+                        />
+                      </div>
+
+                      {/* --- Invitados --- */}
                       <div>
                         <label className="label">N° aproximado de invitados</label>
                         <input
@@ -516,44 +606,39 @@ export default function Admin() {
                             ...prev,
                             [ev.id]: { ...prev[ev.id], invitados: e.target.value },
                           }))}
-                          placeholder="Ej: 500"
+                          placeholder="Ej: 100"
                         />
-                        {cuotaVista ? (
-                          <div style={{
-                            marginTop: 10, padding: 12, background: "var(--bg)",
-                            border: "1px solid var(--border)", borderRadius: "var(--r-sm)",
-                          }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                              <span style={{ color: "var(--text-dim)" }}>Cuota de fotos IA</span>
-                              <span style={{ color: "var(--cyan)" }}>{cuotaVista} fotos</span>
-                            </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                              <span style={{ color: "var(--text-dim)" }}>Costo máximo estimado</span>
-                              <span style={{ color: "var(--text)" }}>
-                                ${costoClpVista?.toLocaleString("es-CL")} CLP (~US${costoUsdVista?.toFixed(2)})
-                              </span>
-                            </div>
-                            <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
-                              Calculado como invitados × 2 fotos, a ${costoPorFoto} USD c/u (plan {tierEv}). Tipo de cambio referencial ${CLP_POR_USD}/USD.
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
-                            Ingresa el número de invitados para calcular la cuota y el costo máximo.
-                          </div>
-                        )}
                       </div>
 
-                      {/* --- Interruptor de FUNphoto IA --- */}
-                      <Fila
-                        titulo="FUNphoto IA"
-                        detalle={ev.ia_habilitada === false
-                          ? "Desactivada: el botón no aparece para los invitados"
-                          : "Activada: los invitados pueden generar fotos con IA"}
-                        activo={ev.ia_habilitada !== false}
-                        onToggle={() => actualizar(ev, { ia_habilitada: ev.ia_habilitada === false },
-                          ev.ia_habilitada === false ? "IA activada" : "IA desactivada")}
-                      />
+                      {/* --- Cuota y cotización --- */}
+                      {cuotaVista ? (
+                        <div style={{
+                          padding: 12, background: "var(--bg)",
+                          border: "1px solid var(--border)", borderRadius: "var(--r-sm)",
+                        }}>
+                          <FilaMonto etiqueta="Cuota de fotos IA" valor={`${cuotaVista} fotos`} color="var(--cyan)" />
+                          {extra > 0 && (
+                            <div style={{ fontSize: 11, color: "var(--text-faint)", margin: "-2px 0 6px" }}>
+                              Incluye {extra} fotos extra agregadas a mano.
+                            </div>
+                          )}
+                          <FilaMonto etiqueta="Costo máximo IA"
+                            valor={`${clp(costoClp)} (US$${costoUsd.toFixed(2)})`} />
+                          <div style={{ borderTop: "1px dashed var(--border)", margin: "8px 0" }} />
+                          <FilaMonto etiqueta="Precio neto (+40%)" valor={clp(precioNeto)} />
+                          <FilaMonto etiqueta="IVA (19%)" valor={clp(ivaClp)} />
+                          <FilaMonto etiqueta="Total sugerido" valor={clp(precioTotal)} color="var(--ok)" fuerte />
+                          <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8, lineHeight: 1.5 }}>
+                            Negocia entre el costo máximo y el total. Cálculo: {invNum || "?"} invitados x {planVista.fotos} fotos
+                            {extra > 0 ? ` + ${extra} extra` : ""}, a US${costoPorFoto} por foto (tier {tierEv}), dólar {clp(dolar.valor)}.
+                            Solo cubre el costo de IA, no el arriendo de la pantalla.
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 11, color: "var(--text-faint)" }}>
+                          Ingresa el número de invitados para calcular la cuota y la cotización.
+                        </div>
+                      )}
 
                       <button
                         className="btn btn-primary btn-sm"
@@ -563,6 +648,38 @@ export default function Admin() {
                       >
                         {guardando === ev.id ? "Guardando..." : "Guardar cambios"}
                       </button>
+
+                      {/* --- Agregar cuota (se guarda al tiro) --- */}
+                      <div style={{ marginTop: 8 }}>
+                        <label className="label">Agregar cuota extra</label>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input
+                            className="input"
+                            type="number"
+                            min="1"
+                            value={extraInput[ev.id] ?? ""}
+                            onChange={(e) => setExtraInput((prev) => ({ ...prev, [ev.id]: e.target.value }))}
+                            placeholder="Ej: 50"
+                          />
+                          <button className="btn btn-ghost btn-sm" onClick={() => agregarCuota(ev)}>
+                            <Icon.Plus size={14} /> Agregar
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
+                          Suma fotos a la cuota actual sin reemplazarla. Úsalo para vender extensiones durante el evento.
+                        </div>
+                      </div>
+
+                      {/* --- Interruptor de FUNfoto IA --- */}
+                      <Fila
+                        titulo="FUNfoto IA"
+                        detalle={ev.ia_habilitada === false
+                          ? "Desactivada: el botón no aparece para los invitados"
+                          : "Activada: los invitados pueden generar fotos con IA"}
+                        activo={ev.ia_habilitada !== false}
+                        onToggle={() => actualizar(ev, { ia_habilitada: ev.ia_habilitada === false },
+                          ev.ia_habilitada === false ? "IA activada" : "IA desactivada")}
+                      />
                     </div>
 
                     {/* Enlaces */}
@@ -590,7 +707,6 @@ export default function Admin() {
                       <>
                         <div className="label">Acciones</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {/* Descarga directa desde admin para eventos cerrados */}
                           <button className="btn btn-primary btn-block" onClick={() => descargarFotos(ev)}>
                             <Icon.Download size={15} /> Descargar fotos aprobadas ({conteos[ev.id]?.approved || 0})
                           </button>
@@ -736,30 +852,40 @@ export default function Admin() {
   );
 }
 
-/* Selector de plan: Base / Premium */
-function SelectorTier({ valor, onChange }) {
+/* Selector de pastillas (tier o plan de fotos) */
+function SelectorPills({ opciones, valor, onChange, destacado }) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
-      {TIERS.map((t) => {
-        const activo = valor === t.id;
-        const esPremium = t.id === "premium";
-        const colorActivo = esPremium ? "var(--magenta)" : "var(--cyan)";
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {opciones.map((o) => {
+        const activo = valor === o.id;
+        const esDestacado = destacado && o.id === destacado;
+        const colorActivo = esDestacado ? "var(--magenta)" : "var(--cyan)";
         return (
           <button
-            key={t.id}
-            onClick={() => onChange(t.id)}
+            key={o.id}
+            onClick={() => onChange(o.id)}
             style={{
-              flex: 1, cursor: "pointer", padding: "10px 16px", borderRadius: 100, fontSize: 13,
+              flex: 1, minWidth: 90, cursor: "pointer", padding: "10px 12px", borderRadius: 100, fontSize: 13,
               fontFamily: "var(--font-body)", fontWeight: 500,
-              background: activo ? (esPremium ? "rgba(224,64,251,0.12)" : "var(--tint-cyan)") : "transparent",
+              background: activo ? (esDestacado ? "rgba(224,64,251,0.12)" : "var(--tint-cyan)") : "transparent",
               border: `1px solid ${activo ? colorActivo : "var(--border)"}`,
               color: activo ? colorActivo : "var(--text-dim)",
             }}
           >
-            {t.nombre}
+            {o.nombre}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/* Fila de monto dentro de la cotización */
+function FilaMonto({ etiqueta, valor, color, fuerte }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13, marginBottom: 4 }}>
+      <span style={{ color: "var(--text-dim)" }}>{etiqueta}</span>
+      <span style={{ color: color || "var(--text)", fontWeight: fuerte ? 600 : 400 }}>{valor}</span>
     </div>
   );
 }
