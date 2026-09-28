@@ -265,6 +265,7 @@ export default function Asistente({ evento }) {
 
       throw new Error("La generación demoró demasiado, intenta de nuevo");
     } catch (err) {
+      if (!seguirGenerandoRef.current) return;
       const textoError = err?.message || "";
       const noReintentable = ERRORES_NO_REINTENTABLES.some((t) =>
         textoError.toLowerCase().includes(t)
@@ -286,6 +287,20 @@ export default function Asistente({ evento }) {
   const reintentarTrasError = () => {
     if (!file || !modoSeleccionado) { reiniciar(); return; }
     generarConIA(file, modoSeleccionado);
+  };
+
+  // Cambiar de foto: mantiene el modo elegido y vuelve a la pantalla
+  // "Tomar foto / Elegir de galería" para usar otra selfie.
+  const cambiarDeFoto = () => {
+    const modoActual = modoSeleccionado || modoParaSubidaRef.current;
+    seguirGenerandoRef.current = false;
+    setPreview(null); setFile(null); setError("");
+    setGenerandoIA(false); setErrorIA(""); setErrorReintentable(true); setIaLista(false);
+    setUrlResultadoIA(null); setFotoIdIA(null);
+    setConfirmandoIA(false); setIaConfirmada(false);
+    if (!modoActual) { reiniciar(); return; }
+    modoParaSubidaRef.current = modoActual;
+    setStep("elegir-fuente-ia");
   };
 
   const confirmarFotoIA = async () => {
@@ -346,7 +361,7 @@ export default function Asistente({ evento }) {
           ref={fileRef}
           type="file"
           accept="image/*"
-          onChange={(e) => tomarArchivo(e.target.files[0])}
+          onChange={(e) => { tomarArchivo(e.target.files[0]); e.target.value = ""; }}
           style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
         />
 
@@ -355,14 +370,14 @@ export default function Asistente({ evento }) {
           type="file"
           accept="image/*"
           capture="environment"
-          onChange={(e) => tomarArchivoIA(e.target.files[0])}
+          onChange={(e) => { tomarArchivoIA(e.target.files[0]); e.target.value = ""; }}
           style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
         />
         <input
           ref={fileRefIAGaleria}
           type="file"
           accept="image/*"
-          onChange={(e) => tomarArchivoIA(e.target.files[0])}
+          onChange={(e) => { tomarArchivoIA(e.target.files[0]); e.target.value = ""; }}
           style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
         />
 
@@ -371,7 +386,7 @@ export default function Asistente({ evento }) {
           type="file"
           accept="image/*"
           capture="environment"
-          onChange={(e) => tomarArchivo(e.target.files[0])}
+          onChange={(e) => { tomarArchivo(e.target.files[0]); e.target.value = ""; }}
           style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
         />
 
@@ -432,7 +447,7 @@ export default function Asistente({ evento }) {
                   className="btn btn-ghost btn-block"
                   onClick={() => setStep("catalogo")}
                 >
-                  FUNphoto IA
+                  FUNfoto IA
                 </button>
               </div>
             )}
@@ -444,7 +459,7 @@ export default function Asistente({ evento }) {
         {step === "catalogo" && (
           <div className="rise">
             <div style={{ textAlign: "center", marginBottom: 18 }}>
-              <div className="eyebrow" style={{ marginBottom: 6 }}>FUNphoto IA</div>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>FUNfoto IA</div>
               <h2 className="display" style={{ fontSize: 20 }}>Elige un modo</h2>
             </div>
 
@@ -648,7 +663,7 @@ export default function Asistente({ evento }) {
         {step === "elegir-fuente-ia" && (
           <div className="rise">
             <div style={{ textAlign: "center", marginBottom: 24 }}>
-              <div className="eyebrow" style={{ marginBottom: 6 }}>FUNphoto IA</div>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>FUNfoto IA</div>
               <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
             </div>
 
@@ -769,7 +784,7 @@ export default function Asistente({ evento }) {
                     </button>
                   </div>
 
-                  <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={reiniciar}>
+                  <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={cambiarDeFoto}>
                     Cambiar de foto
                   </button>
 
@@ -819,6 +834,10 @@ export default function Asistente({ evento }) {
                       Intentar de nuevo
                     </button>
                   )}
+
+                  <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={cambiarDeFoto}>
+                    Cambiar de foto
+                  </button>
 
                   <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={volverAlCatalogo}>
