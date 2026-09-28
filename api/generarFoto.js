@@ -19,6 +19,14 @@
 //   'premium' -> GPT Image 2 (medium).
 // - Cada motor tiene su propio formato de body (Seedream 4.5 usa "size" en
 //   formato antiguo, Seedream 5.0 y GPT Image usan "aspect_ratio" + "resolution").
+//
+// CUOTA (Sept 2026):
+// - Se cuentan TODAS las fotos IA generadas del evento (confirmadas o no),
+//   porque cada generación le cuesta a WaveSpeed.
+// - Si el evento no tiene cuota definida (eventos antiguos), se aplica un
+//   tope de seguridad para que nunca genere sin límite.
+// - El bloqueo ocurre ANTES de llamar a WaveSpeed: si la cuota está llena,
+//   no se crea la tarea y no hay cobro.
 
 const { createClient } = require('@supabase/supabase-js');
 const { getPromptAleatorio, DOMINIO_BASE } = require('../lib/prompts');
@@ -76,6 +84,14 @@ const MODOS_DIVERTIDOS = [
   'cara_aplastada',
 ];
 
+// Tope de seguridad para eventos sin cuota definida (eventos antiguos).
+const TOPE_SEGURIDAD_SIN_CUOTA = 30;
+
+// Mensaje cuando el evento llega a su cuota. Debe contener la palabra
+// "límite": el Asistente la usa para no mostrar el botón "Intentar de nuevo".
+const MENSAJE_CUOTA_AGOTADA =
+  'Este evento llegó a su límite de fotos. Consulta con el organizador para seguir usando FUNfoto IA.';
+
 // Decide qué motor usar según el modo pedido y el tier contratado por el evento.
 function resolverMotor(modo, motorDelEvento) {
   if (MODOS_FIJOS_SEEDREAM_45.includes(modo)) {
@@ -119,7 +135,7 @@ module.exports = async function handler(req, res) {
   );
 
   // ---------------------------------------------------------------------
-  // Control de acceso: IA habilitada + cuota del evento + motor contratado.
+  // Control de acceso: IA habilitada + motor contratado + cuota del evento.
   // ---------------------------------------------------------------------
   const { data: evento, error: errorEvento } = await supabase
     .from('eventos')
@@ -133,7 +149,7 @@ module.exports = async function handler(req, res) {
 
   if (evento?.ia_habilitada === false) {
     return res.status(403).json({
-      error: 'FUNphoto IA no está disponible para este evento',
+      error: 'FUNfoto IA no está disponible para este evento',
     });
   }
 
@@ -144,22 +160,24 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  if (evento?.cuota_ia !== null && evento?.cuota_ia !== undefined) {
-    const { count, error: errorConteo } = await supabase
-      .from('fotos')
-      .select('id', { count: 'exact', head: true })
-      .eq('evento_id', eventoId)
-      .eq('es_ia', true);
+  // Cuota: si el evento no tiene una definida, se usa el tope de seguridad.
+  const cuotaEfectiva =
+    evento?.cuota_ia !== null && evento?.cuota_ia !== undefined && evento.cuota_ia > 0
+      ? evento.cuota_ia
+      : TOPE_SEGURIDAD_SIN_CUOTA;
 
-    if (errorConteo) {
-      return res.status(500).json({ error: 'No se pudo verificar la cuota de fotos IA' });
-    }
+  const { count, error: errorConteo } = await supabase
+    .from('fotos')
+    .select('id', { count: 'exact', head: true })
+    .eq('evento_id', eventoId)
+    .eq('es_ia', true);
 
-    if (count >= evento.cuota_ia) {
-      return res.status(403).json({
-        error: 'Se alcanzó el límite de fotos IA disponibles para este evento',
-      });
-    }
+  if (errorConteo) {
+    return res.status(500).json({ error: 'No se pudo verificar la cuota de fotos IA' });
+  }
+
+  if (count >= cuotaEfectiva) {
+    return res.status(403).json({ error: MENSAJE_CUOTA_AGOTADA });
   }
 
   // Resuelve qué motor usar (Simpsons y Barbie fuerzan 4.5, DIVERTIDOS fuerzan GPT;
@@ -202,7 +220,7 @@ module.exports = async function handler(req, res) {
   } catch (error) {
     console.error('Error en generarFoto:', error);
     return res.status(500).json({
-      error: error.message || 'Error creando la tarea de generación',
+      error: error.message || 'Error creando la generación con IA',
     });
   }
 }
