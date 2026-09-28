@@ -33,6 +33,7 @@ const OPCIONES_PLAN = PLANES_FOTOS.map((p) => ({ id: p.id, nombre: `${p.nombre} 
 
 const planPorId = (id) => PLANES_FOTOS.find((p) => p.id === id) || PLANES_FOTOS[0];
 const clp = (n) => `$${Math.round(n).toLocaleString("es-CL")}`;
+const MENSAJE_FALTAN_INVITADOS = "Ingresa el número de invitados para calcular la cuota y el precio";
 
 export default function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -44,6 +45,7 @@ export default function Admin() {
   const [conteos, setConteos] = useState({});
   const [cargando, setCargando] = useState(true);
   const [verCerrados, setVerCerrados] = useState(false);
+  const [mostrarCrear, setMostrarCrear] = useState(false);
   const [creando, setCreando] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevoMotor, setNuevoMotor] = useState("base");
@@ -104,9 +106,25 @@ export default function Admin() {
   }, [loggedIn, cargarEventos]);
 
   /* ---------- Crear evento con slug único ---------- */
+  const limpiarFormularioCrear = () => {
+    setNuevoNombre("");
+    setNuevoMotor("base");
+    setNuevoPlan("estandar");
+    setNuevosInvitados("");
+  };
+
+  const cancelarCrear = () => {
+    limpiarFormularioCrear();
+    setMostrarCrear(false);
+  };
+
   const crearEvento = async () => {
     const nombre = nuevoNombre.trim();
     if (!nombre) { setToast("Escribe un nombre para el evento"); return; }
+
+    const invitadosNum = parseInt(nuevosInvitados, 10);
+    if (!invitadosNum || invitadosNum <= 0) { setToast(MENSAJE_FALTAN_INVITADOS); return; }
+
     setCreando(true);
     try {
       let slug = generarSlug(nombre);
@@ -114,7 +132,6 @@ export default function Admin() {
       if (existe) slug = `${slug}-${sufijoCorto()}`;
 
       const plan = planPorId(nuevoPlan);
-      const invitadosNum = nuevosInvitados === "" ? null : parseInt(nuevosInvitados, 10);
 
       const clave = Math.random().toString(36).slice(2, 8);
       const { error: err } = await supabase.from("eventos").insert({
@@ -131,13 +148,12 @@ export default function Admin() {
         cuota_plan: plan.id,
         fotos_por_persona: plan.fotos,
         invitados: invitadosNum,
-        cuota_ia: invitadosNum ? invitadosNum * plan.fotos : null,
+        cuota_ia: invitadosNum * plan.fotos,
       });
       if (err) throw err;
-      setNuevoNombre("");
-      setNuevoMotor("base");
-      setNuevoPlan("estandar");
-      setNuevosInvitados("");
+      limpiarFormularioCrear();
+      setMostrarCrear(false);
+      setVerCerrados(false);
       setToast(`Evento creado: ${slug}`);
       cargarEventos();
     } catch {
@@ -247,12 +263,15 @@ export default function Admin() {
   const guardarConfig = async (ev) => {
     const campos = editando[ev.id];
     if (!campos?.nombre?.trim()) { setToast("El nombre no puede estar vacío"); return; }
+
+    const invitadosNum = parseInt(campos.invitados, 10);
+    if (!invitadosNum || invitadosNum <= 0) { setToast(MENSAJE_FALTAN_INVITADOS); return; }
+
     setGuardando(ev.id);
 
     const plan = planPorId(campos.plan);
-    const invitadosNum = campos.invitados === "" ? null : parseInt(campos.invitados, 10);
     const extra = calcularExtra(ev);
-    const cuotaCalculada = invitadosNum ? invitadosNum * plan.fotos + extra : null;
+    const cuotaCalculada = invitadosNum * plan.fotos + extra;
 
     const { error: err } = await supabase.from("eventos").update({
       nombre: campos.nombre.trim(),
@@ -399,7 +418,7 @@ export default function Admin() {
         </Modal>
       )}
 
-      <header style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <header style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
           <Logo size={24} />
           <div className="eyebrow" style={{ marginTop: 10 }}>Panel de administración</div>
@@ -409,59 +428,97 @@ export default function Admin() {
               : `Dólar referencial: ${clp(dolar.valor)} (no se pudo obtener el del día)`}
           </div>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={cargarEventos} title="Actualizar estado">
-          <Icon.Refresh size={16} /> Actualizar
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={cargarEventos} title="Actualizar estado">
+            <Icon.Refresh size={16} /> Actualizar
+          </button>
+          {!mostrarCrear && (
+            <button className="btn btn-primary btn-sm" onClick={() => setMostrarCrear(true)}>
+              <Icon.Plus size={16} /> Nuevo evento
+            </button>
+          )}
+        </div>
       </header>
 
-      {/* Crear evento */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <label className="label">Nuevo evento</label>
-        <input className="input"
-          placeholder="Boda Paola y Javier"
-          value={nuevoNombre}
-          onChange={(e) => setNuevoNombre(e.target.value)} />
-        {nuevoNombre.trim() && (
-          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 8 }}>
-            Dirección: /subir/{generarSlug(nuevoNombre)}
+      {/* ===================== CREAR EVENTO (desplegable) ===================== */}
+      {mostrarCrear && (
+        <div className="card rise" style={{
+          marginBottom: 28,
+          border: "1px solid var(--magenta)",
+          background: "linear-gradient(135deg, rgba(224,64,251,0.07), rgba(0,229,255,0.03))",
+          boxShadow: "0 0 30px rgba(224,64,251,0.10)",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div>
+              <div className="eyebrow" style={{ color: "var(--magenta)", marginBottom: 4 }}>Crear evento</div>
+              <div className="display" style={{ fontSize: 18 }}>Nuevo evento</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={cancelarCrear}>Cancelar</button>
           </div>
-        )}
 
-        <div style={{ marginTop: 14 }}>
-          <label className="label">Tier contratado</label>
-          <SelectorPills opciones={TIERS} valor={nuevoMotor} onChange={setNuevoMotor} destacado="premium" />
-        </div>
+          <label className="label">Nombre del evento *</label>
+          <input className="input"
+            placeholder="Boda Paola y Javier"
+            value={nuevoNombre}
+            onChange={(e) => setNuevoNombre(e.target.value)} />
+          {nuevoNombre.trim() && (
+            <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 8 }}>
+              Dirección: /subir/{generarSlug(nuevoNombre)}
+            </div>
+          )}
 
-        <div style={{ marginTop: 14 }}>
-          <label className="label">Plan de fotos por persona</label>
-          <SelectorPills opciones={OPCIONES_PLAN} valor={nuevoPlan} onChange={setNuevoPlan} />
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          <label className="label">N° aproximado de invitados (opcional)</label>
-          <input className="input" type="number" min="0"
-            placeholder="Ej: 100"
-            value={nuevosInvitados}
-            onChange={(e) => setNuevosInvitados(e.target.value)} />
-        </div>
-
-        {cuotaNueva > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <Cotizacion
-              cuota={cuotaNueva}
-              extra={0}
-              invitados={invNuevoNum}
-              fotosPorPersona={planNuevo.fotos}
-              tier={nuevoMotor}
-              dolar={dolar.valor}
-            />
+          <div style={{ marginTop: 14 }}>
+            <label className="label">Tier contratado</label>
+            <SelectorPills opciones={TIERS} valor={nuevoMotor} onChange={setNuevoMotor} destacado="premium" />
           </div>
-        )}
 
-        <button className="btn btn-primary btn-block" style={{ marginTop: 14 }}
-          onClick={crearEvento} disabled={creando}>
-          <Icon.Plus size={16} /> {creando ? "Creando..." : "Crear evento"}
-        </button>
+          <div style={{ marginTop: 14 }}>
+            <label className="label">Plan de fotos por persona</label>
+            <SelectorPills opciones={OPCIONES_PLAN} valor={nuevoPlan} onChange={setNuevoPlan} />
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <label className="label">N° aproximado de invitados *</label>
+            <input className="input" type="number" min="1"
+              placeholder="Ej: 100"
+              value={nuevosInvitados}
+              onChange={(e) => setNuevosInvitados(e.target.value)} />
+          </div>
+
+          {cuotaNueva > 0 ? (
+            <div style={{ marginTop: 12 }}>
+              <Cotizacion
+                cuota={cuotaNueva}
+                extra={0}
+                invitados={invNuevoNum}
+                fotosPorPersona={planNuevo.fotos}
+                tier={nuevoMotor}
+                dolar={dolar.valor}
+              />
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8 }}>
+              Ingresa los invitados para ver la cuota y la cotización.
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={cancelarCrear} disabled={creando}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" style={{ flex: 2 }} onClick={crearEvento} disabled={creando}>
+              <Icon.Plus size={16} /> {creando ? "Creando..." : "Crear evento"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== TUS EVENTOS ===================== */}
+      <div style={{ marginBottom: 12 }}>
+        <div className="eyebrow" style={{ marginBottom: 4 }}>Tus eventos</div>
+        <div className="display" style={{ fontSize: 20 }}>
+          {verCerrados ? "Eventos cerrados" : "Eventos en vivo"}
+        </div>
       </div>
 
       {/* Conmutador activos / cerrados */}
@@ -487,7 +544,7 @@ export default function Admin() {
         <div className="card">
           <Vacio icono="screen"
             titulo={verCerrados ? "Sin eventos cerrados" : "Sin eventos en vivo"}
-            detalle={verCerrados ? "Los eventos que cierres aparecen acá." : "Crea un evento arriba para empezar."} />
+            detalle={verCerrados ? "Los eventos que cierres aparecen acá." : "Toca \"Nuevo evento\" para crear el primero."} />
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -522,6 +579,9 @@ export default function Admin() {
                         </span>
                       )}
                       <span className="chip">{planGuardado.nombre}</span>
+                      {!ev.cuota_ia && (
+                        <span className="chip chip-warn">Sin cuota</span>
+                      )}
                       {c.pending > 0 && !ev.evento_cerrado && (
                         <span className="chip chip-warn">{c.pending} por revisar</span>
                       )}
@@ -531,7 +591,7 @@ export default function Admin() {
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 6 }}>
                       /{ev.slug} · clave {ev.evento_cerrado ? "expirada" : ev.clave_operador}
-                      {ev.cuota_ia ? ` · cuota ${ev.cuota_ia} fotos IA` : " · sin cuota definida"}
+                      {ev.cuota_ia ? ` · cuota ${ev.cuota_ia} fotos IA` : " · define los invitados para fijar la cuota"}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -629,11 +689,11 @@ export default function Admin() {
 
                       {/* --- Invitados --- */}
                       <div>
-                        <label className="label">N° aproximado de invitados</label>
+                        <label className="label">N° aproximado de invitados *</label>
                         <input
                           className="input"
                           type="number"
-                          min="0"
+                          min="1"
                           value={invitadosVista}
                           onChange={(e) => setEditando((prev) => ({
                             ...prev,
