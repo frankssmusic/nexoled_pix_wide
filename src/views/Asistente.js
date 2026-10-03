@@ -61,6 +61,16 @@ const SUBMODOS_FUTBOL = [
   { id: "futbol_fan_4", nombre: "Argentina" },
 ];
 
+// Consejos del instructivo. Los emojis van como códigos para que no se
+// corrompan al copiar el archivo.
+const CONSEJOS_INSTRUCTIVO = [
+  { emoji: "\u{1F4A1}", fuerte: "Busca buena luz", resto: " para tu selfie", color: "0,229,255" },
+  { emoji: "\u{1F465}", fuerte: "Sugerencia:", resto: " máximo 2 personas para un resultado óptimo", color: "224,64,251" },
+  { emoji: "\u{23F3}", fuerte: "El modo HD puede tardar hasta 4 minutos,", resto: " ten paciencia", color: "0,229,255" },
+  { emoji: "\u{1F4F1}", fuerte: "No cierres la app", resto: " ni bloquees el celular mientras se genera", color: "224,64,251" },
+];
+const EMOJI_BRILLO = "\u{2728}";
+
 // Consulta en el momento si el evento tiene la aprobación automática encendida.
 const leerAutoAprobar = async (eventoId) => {
   const { data } = await supabase.from("eventos").select("auto_aprobar").eq("id", eventoId).single();
@@ -90,6 +100,7 @@ export default function Asistente({ evento }) {
   const [modoSeleccionado, setModoSeleccionado] = useState(null);
   const [descargandoFoto, setDescargandoFoto] = useState(false);
   const [reusarFoto, setReusarFoto] = useState(false);
+  const [mostrarInstructivo, setMostrarInstructivo] = useState(false);
   const MAX_INTENTOS_IA = 2;
 
   const fileRef = useRef();
@@ -98,13 +109,121 @@ export default function Asistente({ evento }) {
   const fileRefIACamara = useRef();
   const modoParaSubidaRef = useRef(null);
   const seguirGenerandoRef = useRef(true);
+  const wakeLockRef = useRef(null);
+  const audioCtxRef = useRef(null);
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
   const esPremium = evento?.motor_ia === "premium";
+  const claveInstructivo = evento ? `funfoto_instructivo_${evento.id}` : null;
 
   const textoTrasConfirmar = aprobadaDirecto
     ? "¡Tu foto ya está en la pantalla del evento!"
     : "El operador la revisa y, si la aprueba, aparece en la pantalla.";
+
+  /* ---------- Sonido y vibración al terminar ---------- */
+
+  // El navegador solo deja sonar audio si se "despertó" con un toque del
+  // usuario. Por eso se llama en cada botón que inicia una generación.
+  const prepararAudio = () => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+      if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume();
+    } catch {
+      // Sin audio no pasa nada.
+    }
+  };
+
+  // Vibra (Android) y suena un ding-ding corto.
+  const avisarFotoLista = () => {
+    try {
+      if (navigator.vibrate) navigator.vibrate([180, 90, 180]);
+    } catch {
+      // iPhone no permite vibrar desde la web.
+    }
+    try {
+      const ctx = audioCtxRef.current;
+      if (!ctx) return;
+      if (ctx.state === "suspended") ctx.resume();
+      const ahora = ctx.currentTime;
+      [880, 1318.5].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        const t0 = ahora + i * 0.16;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.4);
+      });
+    } catch {
+      // Sin audio no pasa nada.
+    }
+  };
+
+  /* ---------- Pantalla encendida mientras genera ---------- */
+  useEffect(() => {
+    if (!generandoIA) return;
+    let activo = true;
+
+    const pedir = async () => {
+      try {
+        if ("wakeLock" in navigator && document.visibilityState === "visible") {
+          wakeLockRef.current = await navigator.wakeLock.request("screen");
+        }
+      } catch {
+        // Si el celular no lo permite, sigue normal.
+      }
+    };
+
+    // Si la persona sale de la app y vuelve, se pide de nuevo.
+    const alVolver = () => {
+      if (activo && document.visibilityState === "visible") pedir();
+    };
+
+    pedir();
+    document.addEventListener("visibilitychange", alVolver);
+
+    return () => {
+      activo = false;
+      document.removeEventListener("visibilitychange", alVolver);
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
+  }, [generandoIA]);
+
+  /* ---------- Instructivo (una vez por evento y celular) ---------- */
+  const abrirFunfoto = () => {
+    prepararAudio();
+    let visto = false;
+    try {
+      visto = claveInstructivo ? localStorage.getItem(claveInstructivo) === "1" : false;
+    } catch {
+      visto = false;
+    }
+    if (visto) {
+      setStep("catalogo");
+    } else {
+      setMostrarInstructivo(true);
+    }
+  };
+
+  const cerrarInstructivo = () => {
+    try {
+      if (claveInstructivo) localStorage.setItem(claveInstructivo, "1");
+    } catch {
+      // Si no se puede guardar, se mostrará de nuevo la próxima vez.
+    }
+    setMostrarInstructivo(false);
+    setStep("catalogo");
+  };
 
   const volverAlCatalogo = () => {
     const modoActual = modoParaSubidaRef.current || modoSeleccionado;
@@ -255,6 +374,7 @@ export default function Asistente({ evento }) {
           setIntentosIA((n) => n + 1);
           setIaLista(true);
           setGenerandoIA(false);
+          avisarFotoLista();
           return;
         }
       }
@@ -284,6 +404,7 @@ export default function Asistente({ evento }) {
   };
 
   const elegirModo = (modoId) => {
+    prepararAudio();
     if (modoId === "futbol_fan") {
       setStep("catalogo-futbol");
       return;
@@ -297,6 +418,7 @@ export default function Asistente({ evento }) {
   };
 
   const elegirSubmodoFutbol = (modoId) => {
+    prepararAudio();
     if (reusarFoto && file) {
       iniciarConFotoGuardada(modoId);
       return;
@@ -344,6 +466,7 @@ export default function Asistente({ evento }) {
 
   const volverAGenerar = () => {
     if (intentosIA >= MAX_INTENTOS_IA) return;
+    prepararAudio();
     setIaLista(false);
     generarConIA(file, modoSeleccionado);
   };
@@ -351,6 +474,7 @@ export default function Asistente({ evento }) {
   // Tras un error: misma foto, mismo modo, otra variante. No cuenta como intento.
   const reintentarTrasError = () => {
     if (!file || !modoSeleccionado) { reiniciar(); return; }
+    prepararAudio();
     generarConIA(file, modoSeleccionado);
   };
 
@@ -469,6 +593,8 @@ export default function Asistente({ evento }) {
       minHeight: "100vh", display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center", padding: "20px 16px 40px",
     }}>
+      {mostrarInstructivo && <Instructivo onAceptar={cerrarInstructivo} />}
+
       <div style={{ width: "100%", maxWidth: 420 }}>
 
         <input ref={fileRef} type="file" accept="image/*" style={estiloInputOculto}
@@ -527,7 +653,7 @@ export default function Asistente({ evento }) {
 
             {evento?.ia_habilitada !== false && (
               <div style={{ marginTop: 26, paddingTop: 20, borderTop: "1px dashed var(--border)", textAlign: "center" }}>
-                <button className="btn btn-ghost btn-block" onClick={() => setStep("catalogo")}>
+                <button className="btn btn-ghost btn-block" onClick={abrirFunfoto}>
                   FUNfoto IA
                 </button>
               </div>
@@ -670,10 +796,12 @@ export default function Asistente({ evento }) {
               <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
             </div>
             {consejoSelfie}
-            <button className="btn btn-primary btn-block" style={{ marginBottom: 12 }} onClick={() => fileRefIACamara.current?.click()}>
+            <button className="btn btn-primary btn-block" style={{ marginBottom: 12 }}
+              onClick={() => { prepararAudio(); fileRefIACamara.current?.click(); }}>
               Tomar foto ahora
             </button>
-            <button className="btn btn-ghost btn-block" onClick={() => fileRefIAGaleria.current?.click()}>
+            <button className="btn btn-ghost btn-block"
+              onClick={() => { prepararAudio(); fileRefIAGaleria.current?.click(); }}>
               Elegir de galería
             </button>
             <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={volverAlCatalogo}>
@@ -727,7 +855,7 @@ export default function Asistente({ evento }) {
                     {mensajeGenerando}
                   </p>
                   <p style={{ color: "var(--text-dim)", fontSize: 12.5, lineHeight: 1.6 }}>
-                    Puede tardar hasta 4 minutos. No cierres esta pantalla.
+                    Puede tardar hasta 4 minutos. No cierres esta pantalla, te avisamos con un sonido cuando esté lista.
                   </p>
                 </>
               )}
@@ -880,6 +1008,91 @@ export default function Asistente({ evento }) {
             <Banner />
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* Ventana del instructivo: aparece una vez por evento y celular. */
+function Instructivo({ onAceptar }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(5,5,10,0.72)",
+      backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 20, animation: "nexoAparecer 0.25s ease both",
+    }}>
+      <style>{`
+        @keyframes nexoAparecer { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes nexoSubir { from { opacity: 0; transform: translateY(18px) scale(0.98); } to { opacity: 1; transform: none; } }
+        @keyframes nexoItem { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+        @keyframes nexoBrillo {
+          0%, 100% { box-shadow: 0 0 22px rgba(224,64,251,0.35), 0 0 0 1px rgba(224,64,251,0.4); transform: scale(1); }
+          50% { box-shadow: 0 0 36px rgba(0,229,255,0.45), 0 0 0 1px rgba(0,229,255,0.5); transform: scale(1.05); }
+        }
+      `}</style>
+
+      <div style={{
+        width: "100%", maxWidth: 380,
+        background: "linear-gradient(160deg, #16162a 0%, #0d0d16 100%)",
+        border: "1px solid rgba(224,64,251,0.45)",
+        borderRadius: 22, padding: "28px 22px 22px",
+        boxShadow: "0 0 60px rgba(224,64,251,0.18), 0 20px 50px rgba(0,0,0,0.5)",
+        animation: "nexoSubir 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both",
+      }}>
+        <div style={{
+          width: 66, height: 66, borderRadius: "50%", margin: "0 auto 16px",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 32,
+          background: "radial-gradient(circle, rgba(224,64,251,0.28), rgba(0,229,255,0.08))",
+          animation: "nexoBrillo 2.6s ease-in-out infinite",
+        }}>
+          {EMOJI_BRILLO}
+        </div>
+
+        <div className="eyebrow" style={{ textAlign: "center", color: "var(--magenta)", marginBottom: 6 }}>
+          FUNfoto IA
+        </div>
+        <h2 className="display" style={{ textAlign: "center", fontSize: 21, marginBottom: 20 }}>
+          Antes de tu FUNfoto
+        </h2>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
+          {CONSEJOS_INSTRUCTIVO.map((c, i) => (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 14,
+              padding: "12px 14px", borderRadius: 14,
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.07)",
+              animation: `nexoItem 0.4s ease ${0.15 + i * 0.1}s both`,
+            }}>
+              <div style={{
+                width: 42, height: 42, borderRadius: "50%", flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 21,
+                background: `rgba(${c.color},0.12)`,
+                border: `1px solid rgba(${c.color},0.35)`,
+              }}>
+                {c.emoji}
+              </div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.45, color: "var(--text-dim)" }}>
+                <span style={{ color: "var(--text)", fontWeight: 600 }}>{c.fuerte}</span>
+                {c.resto}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={onAceptar} style={{
+          width: "100%", padding: "14px 16px", borderRadius: 14, border: "none",
+          cursor: "pointer", fontSize: 15, fontWeight: 700,
+          fontFamily: "var(--font-body)", color: "#0a0a0f",
+          background: "linear-gradient(90deg, var(--cyan), var(--magenta))",
+          boxShadow: "0 0 24px rgba(0,229,255,0.25)",
+        }}>
+          ¡Entendido, vamos!
+        </button>
       </div>
     </div>
   );
