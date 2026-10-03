@@ -73,12 +73,6 @@ const CONSEJOS_INSTRUCTIVO = [
 const EMOJI_BRILLO = "\u{2728}";
 const EMOJI_CONTROL = "\u{1F3AE}";
 
-// Consulta en el momento si el evento tiene la aprobación automática encendida.
-const leerAutoAprobar = async (eventoId) => {
-  const { data } = await supabase.from("eventos").select("auto_aprobar").eq("id", eventoId).single();
-  return data?.auto_aprobar === true;
-};
-
 const esCelular = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
 
 export default function Asistente({ evento }) {
@@ -511,21 +505,30 @@ export default function Asistente({ evento }) {
     setStep("catalogo");
   };
 
+  // "Usar esta foto": el servidor decide si queda aprobada o en espera.
   const confirmarFotoIA = async () => {
     if (!fotoIdIA) return;
     setConfirmandoIA(true);
     try {
-      const directo = await leerAutoAprobar(evento.id);
-      const { error: errUpdate } = await supabase
-        .from("fotos")
-        .update({ status: directo ? "approved" : "pending" })
-        .eq("id", fotoIdIA);
-      if (errUpdate) throw errUpdate;
-      setAprobadaDirecto(directo);
+      const resp = await fetch("/api/confirmarFoto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fotoId: fotoIdIA, eventoId: evento.id }),
+      });
+      let json = {};
+      try {
+        json = await resp.json();
+      } catch {
+        json = {};
+      }
+      if (!resp.ok) {
+        throw new Error(json?.error || "No se pudo confirmar la foto. Intenta de nuevo.");
+      }
+      setAprobadaDirecto(json.directo === true);
       setIaConfirmada(true);
-    } catch {
+    } catch (err) {
       setErrorReintentable(false);
-      setErrorIA("No se pudo confirmar la foto. Intenta de nuevo.");
+      setErrorIA(err?.message || "No se pudo confirmar la foto. Intenta de nuevo.");
     } finally {
       setConfirmandoIA(false);
     }
