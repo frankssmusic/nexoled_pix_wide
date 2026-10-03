@@ -44,14 +44,12 @@ const MENSAJES_GENERANDO = [
 ];
 
 // Errores donde reintentar no sirve (cuota, plan, IA apagada, evento cerrado).
-// En esos casos se muestra el mensaje real y no aparece "Intentar de nuevo".
 const ERRORES_NO_REINTENTABLES = ["límite", "plan premium", "no está disponible", "cerró"];
 
 const MENSAJE_ERROR_REINTENTABLE =
   "La IA no pudo generar esta foto esta vez. Toca \"Intentar de nuevo\" y se creará otra versión.";
 
-// Espera máxima de la generación: 90 consultas x 3 segundos = 270 segundos.
-// Algunas generaciones con GPT pueden tardar hasta ~220 segundos.
+// Espera máxima: 90 consultas x 3 segundos = 270 segundos.
 const MAX_CONSULTAS = 90;
 
 const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
@@ -68,6 +66,8 @@ const leerAutoAprobar = async (eventoId) => {
   const { data } = await supabase.from("eventos").select("auto_aprobar").eq("id", eventoId).single();
   return data?.auto_aprobar === true;
 };
+
+const esCelular = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
 
 export default function Asistente({ evento }) {
   const [step, setStep] = useState("subir");
@@ -88,7 +88,7 @@ export default function Asistente({ evento }) {
   const [confirmandoIA, setConfirmandoIA] = useState(false);
   const [iaConfirmada, setIaConfirmada] = useState(false);
   const [modoSeleccionado, setModoSeleccionado] = useState(null);
-  // "Otro modo": el invitado vuelve al catálogo y reutiliza la misma foto.
+  const [descargandoFoto, setDescargandoFoto] = useState(false);
   const [reusarFoto, setReusarFoto] = useState(false);
   const MAX_INTENTOS_IA = 2;
 
@@ -97,6 +97,7 @@ export default function Asistente({ evento }) {
   const fileRefIAGaleria = useRef();
   const fileRefIACamara = useRef();
   const modoParaSubidaRef = useRef(null);
+  const seguirGenerandoRef = useRef(true);
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
   const esPremium = evento?.motor_ia === "premium";
@@ -105,11 +106,40 @@ export default function Asistente({ evento }) {
     ? "¡Tu foto ya está en la pantalla del evento!"
     : "El operador la revisa y, si la aprueba, aparece en la pantalla.";
 
-  // Vuelve al submenú Divertidos si el modo elegido es de ese bloque;
-  // si no, al catálogo general.
   const volverAlCatalogo = () => {
     const modoActual = modoParaSubidaRef.current || modoSeleccionado;
     setStep(esModoDivertido(modoActual) ? "catalogo-divertidos" : "catalogo");
+  };
+
+  // Descargar la foto generada.
+  // Celular: menú nativo de compartir ("Guardar imagen", WhatsApp, etc.).
+  // Computador: descarga directa del archivo.
+  const descargarFoto = async () => {
+    if (!urlResultadoIA) return;
+    setDescargandoFoto(true);
+    try {
+      const resp = await fetch(urlResultadoIA);
+      const blob = await resp.blob();
+      const nombre = `funfoto_${Date.now()}.jpg`;
+      const archivo = new File([blob], nombre, { type: blob.type || "image/jpeg" });
+
+      if (esCelular() && navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        await navigator.share({ files: [archivo], title: "Mi FUNfoto IA" });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const enlace = document.createElement("a");
+        enlace.href = url;
+        enlace.download = nombre;
+        document.body.appendChild(enlace);
+        enlace.click();
+        enlace.remove();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      if (err?.name !== "AbortError") window.open(urlResultadoIA, "_blank", "noopener,noreferrer");
+    } finally {
+      setDescargandoFoto(false);
+    }
   };
 
   const tomarArchivo = (f) => {
@@ -160,8 +190,6 @@ export default function Asistente({ evento }) {
       setEnviando(false);
     }
   };
-
-  const seguirGenerandoRef = useRef(true);
 
   const generarConIA = async (fileParaIA, modo) => {
     const fileAUsar = fileParaIA || file;
@@ -244,7 +272,7 @@ export default function Asistente({ evento }) {
     }
   };
 
-  // Si el invitado vino desde "Otro modo", genera de inmediato con la misma foto.
+  // Desde "Otro modo": genera de inmediato con la misma foto.
   const iniciarConFotoGuardada = (modoId) => {
     modoParaSubidaRef.current = modoId;
     setModoSeleccionado(modoId);
@@ -301,8 +329,7 @@ export default function Asistente({ evento }) {
     reader.readAsDataURL(f);
   };
 
-  // Contador que avanza cada medio segundo mientras se genera:
-  // mueve los puntitos y cambia el mensaje cada 5 segundos.
+  // Contador para los puntitos y los mensajes rotativos.
   const [tickGenerando, setTickGenerando] = useState(0);
   useEffect(() => {
     if (!generandoIA) {
@@ -315,20 +342,18 @@ export default function Asistente({ evento }) {
   const puntosGenerando = ".".repeat(tickGenerando % 4);
   const mensajeGenerando = MENSAJES_GENERANDO[Math.floor(tickGenerando / 10) % MENSAJES_GENERANDO.length];
 
-  const intentarDeNuevo = () => {
+  const volverAGenerar = () => {
     if (intentosIA >= MAX_INTENTOS_IA) return;
     setIaLista(false);
     generarConIA(file, modoSeleccionado);
   };
 
-  // Tras un error: vuelve a generar con la misma foto y el mismo modo.
-  // El servidor elige otra variante al azar. No cuenta como intento.
+  // Tras un error: misma foto, mismo modo, otra variante. No cuenta como intento.
   const reintentarTrasError = () => {
     if (!file || !modoSeleccionado) { reiniciar(); return; }
     generarConIA(file, modoSeleccionado);
   };
 
-  // Limpia el resultado actual sin borrar la foto ni el modo.
   const limpiarResultado = () => {
     seguirGenerandoRef.current = false;
     setGenerandoIA(false); setErrorIA(""); setErrorReintentable(true); setIaLista(false);
@@ -336,7 +361,7 @@ export default function Asistente({ evento }) {
     setConfirmandoIA(false); setIaConfirmada(false);
   };
 
-  // Otra selfie: mantiene el modo elegido y vuelve a "Tomar foto / Elegir de galería".
+  // Otra selfie: mismo modo, foto nueva.
   const otraSelfie = () => {
     const modoActual = modoSeleccionado || modoParaSubidaRef.current;
     limpiarResultado();
@@ -346,7 +371,7 @@ export default function Asistente({ evento }) {
     setStep("elegir-fuente-ia");
   };
 
-  // Otro modo: mantiene la misma foto y vuelve al catálogo para elegir otro modo.
+  // Otro modo: misma foto, eliges otro modo.
   const otroModo = () => {
     if (!file) { reiniciar(); return; }
     limpiarResultado();
@@ -403,7 +428,6 @@ export default function Asistente({ evento }) {
     );
   }
 
-  // Aviso que se muestra en los catálogos cuando se reutiliza la misma foto.
   const avisoMismaFoto = reusarFoto && preview ? (
     <div className="card card-tight" style={{
       display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
@@ -431,6 +455,15 @@ export default function Asistente({ evento }) {
     </div>
   );
 
+  const estiloInputOculto = { position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" };
+
+  const estiloTarjetaModo = (borde) => ({
+    aspectRatio: "1 / 1", display: "flex", alignItems: "center",
+    justifyContent: "center", textAlign: "center", padding: 12,
+    cursor: "pointer", border: `1px solid ${borde}`,
+    background: "var(--surface)",
+  });
+
   return (
     <div style={{
       minHeight: "100vh", display: "flex", flexDirection: "column",
@@ -438,38 +471,14 @@ export default function Asistente({ evento }) {
     }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          onChange={(e) => { tomarArchivo(e.target.files[0]); e.target.value = ""; }}
-          style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
-        />
-
-        <input
-          ref={fileRefIACamara}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={(e) => { tomarArchivoIA(e.target.files[0]); e.target.value = ""; }}
-          style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
-        />
-        <input
-          ref={fileRefIAGaleria}
-          type="file"
-          accept="image/*"
-          onChange={(e) => { tomarArchivoIA(e.target.files[0]); e.target.value = ""; }}
-          style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
-        />
-
-        <input
-          ref={fileRefCamara}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={(e) => { tomarArchivo(e.target.files[0]); e.target.value = ""; }}
-          style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
-        />
+        <input ref={fileRef} type="file" accept="image/*" style={estiloInputOculto}
+          onChange={(e) => { tomarArchivo(e.target.files[0]); e.target.value = ""; }} />
+        <input ref={fileRefIACamara} type="file" accept="image/*" capture="environment" style={estiloInputOculto}
+          onChange={(e) => { tomarArchivoIA(e.target.files[0]); e.target.value = ""; }} />
+        <input ref={fileRefIAGaleria} type="file" accept="image/*" style={estiloInputOculto}
+          onChange={(e) => { tomarArchivoIA(e.target.files[0]); e.target.value = ""; }} />
+        <input ref={fileRefCamara} type="file" accept="image/*" capture="environment" style={estiloInputOculto}
+          onChange={(e) => { tomarArchivo(e.target.files[0]); e.target.value = ""; }} />
 
         <header style={{ textAlign: "center", marginBottom: 24 }}>
           <div className="eyebrow" style={{ marginBottom: 8 }}>NexoLED presenta</div>
@@ -506,10 +515,7 @@ export default function Asistente({ evento }) {
               </div>
             </div>
 
-            <p style={{
-              textAlign: "center", color: "var(--text-dim)", fontSize: 14,
-              marginTop: 22, lineHeight: 1.6,
-            }}>
+            <p style={{ textAlign: "center", color: "var(--text-dim)", fontSize: 14, marginTop: 22, lineHeight: 1.6 }}>
               Tu foto pasa por revisión y aparece en la pantalla del evento.
             </p>
 
@@ -520,14 +526,8 @@ export default function Asistente({ evento }) {
             )}
 
             {evento?.ia_habilitada !== false && (
-              <div style={{
-                marginTop: 26, paddingTop: 20,
-                borderTop: "1px dashed var(--border)", textAlign: "center",
-              }}>
-                <button
-                  className="btn btn-ghost btn-block"
-                  onClick={() => setStep("catalogo")}
-                >
+              <div style={{ marginTop: 26, paddingTop: 20, borderTop: "1px dashed var(--border)", textAlign: "center" }}>
+                <button className="btn btn-ghost btn-block" onClick={() => setStep("catalogo")}>
                   FUNfoto IA
                 </button>
               </div>
@@ -561,50 +561,24 @@ export default function Asistente({ evento }) {
               >
                 <span className="eyebrow" style={{ color: "var(--magenta)" }}>Exclusivo de este evento</span>
                 <span className="display" style={{ fontSize: 22, color: "#fff" }}>Divertidos</span>
-                <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
-                  Filtros chistosos para reírse en grupo
-                </span>
+                <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}>Filtros chistosos para reírse en grupo</span>
               </button>
             )}
 
-            <div style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
-            }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               {MODOS_IA.map((modo) => (
-                <button
-                  key={modo.id}
-                  onClick={() => elegirModo(modo.id)}
-                  className="card"
-                  style={{
-                    aspectRatio: "1 / 1", display: "flex", alignItems: "center",
-                    justifyContent: "center", textAlign: "center", padding: 12,
-                    cursor: "pointer", border: "1px solid var(--border)",
-                    background: "var(--surface)",
-                  }}
-                >
+                <button key={modo.id} onClick={() => elegirModo(modo.id)} className="card"
+                  style={estiloTarjetaModo("var(--border)")}>
                   <span className="display" style={{ fontSize: 14, color: "#fff" }}>{modo.nombre}</span>
                 </button>
               ))}
-
-              <button
-                onClick={() => elegirModo(MODO_FUTBOL_FAN.id)}
-                className="card"
-                style={{
-                  aspectRatio: "1 / 1", display: "flex", alignItems: "center",
-                  justifyContent: "center", textAlign: "center", padding: 12,
-                  cursor: "pointer", border: "1px solid var(--cyan)",
-                  background: "var(--surface)",
-                }}
-              >
+              <button onClick={() => elegirModo(MODO_FUTBOL_FAN.id)} className="card"
+                style={estiloTarjetaModo("var(--cyan)")}>
                 <span className="display" style={{ fontSize: 14, color: "#fff" }}>{MODO_FUTBOL_FAN.nombre}</span>
               </button>
             </div>
 
-            <button
-              className="btn btn-ghost btn-block"
-              style={{ marginTop: 20 }}
-              onClick={reiniciar}
-            >
+            <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={reiniciar}>
               Volver
             </button>
 
@@ -628,31 +602,16 @@ export default function Asistente({ evento }) {
               </div>
             )}
 
-            <div style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
-            }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               {MODOS_DIVERTIDOS.map((modo) => (
-                <button
-                  key={modo.id}
-                  onClick={() => elegirModo(modo.id)}
-                  className="card"
-                  style={{
-                    aspectRatio: "1 / 1", display: "flex", alignItems: "center",
-                    justifyContent: "center", textAlign: "center", padding: 12,
-                    cursor: "pointer", border: "1px solid var(--magenta)",
-                    background: "var(--surface)",
-                  }}
-                >
+                <button key={modo.id} onClick={() => elegirModo(modo.id)} className="card"
+                  style={estiloTarjetaModo("var(--magenta)")}>
                   <span className="display" style={{ fontSize: 14, color: "#fff" }}>{modo.nombre}</span>
                 </button>
               ))}
             </div>
 
-            <button
-              className="btn btn-ghost btn-block"
-              style={{ marginTop: 20 }}
-              onClick={() => setStep("catalogo")}
-            >
+            <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={() => setStep("catalogo")}>
               Volver al catálogo
             </button>
 
@@ -669,31 +628,16 @@ export default function Asistente({ evento }) {
 
             {avisoMismaFoto || consejoSelfie}
 
-            <div style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
-            }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               {SUBMODOS_FUTBOL.map((sub) => (
-                <button
-                  key={sub.id}
-                  onClick={() => elegirSubmodoFutbol(sub.id)}
-                  className="card"
-                  style={{
-                    aspectRatio: "1 / 1", display: "flex", alignItems: "center",
-                    justifyContent: "center", textAlign: "center", padding: 12,
-                    cursor: "pointer", border: "1px solid var(--border)",
-                    background: "var(--surface)",
-                  }}
-                >
+                <button key={sub.id} onClick={() => elegirSubmodoFutbol(sub.id)} className="card"
+                  style={estiloTarjetaModo("var(--border)")}>
                   <span className="display" style={{ fontSize: 14, color: "#fff" }}>{sub.nombre}</span>
                 </button>
               ))}
             </div>
 
-            <button
-              className="btn btn-ghost btn-block"
-              style={{ marginTop: 20 }}
-              onClick={() => setStep("catalogo")}
-            >
+            <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={() => setStep("catalogo")}>
               Volver al catálogo
             </button>
 
@@ -706,29 +650,15 @@ export default function Asistente({ evento }) {
             <div style={{ textAlign: "center", marginBottom: 24 }}>
               <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
             </div>
-
-            <button
-              className="btn btn-primary btn-block"
-              style={{ marginBottom: 12 }}
-              onClick={() => fileRefCamara.current?.click()}
-            >
+            <button className="btn btn-primary btn-block" style={{ marginBottom: 12 }} onClick={() => fileRefCamara.current?.click()}>
               Tomar foto ahora
             </button>
-            <button
-              className="btn btn-ghost btn-block"
-              onClick={() => fileRef.current?.click()}
-            >
+            <button className="btn btn-ghost btn-block" onClick={() => fileRef.current?.click()}>
               Elegir de galería
             </button>
-
-            <button
-              className="btn btn-ghost btn-block"
-              style={{ marginTop: 20 }}
-              onClick={() => setStep("subir")}
-            >
+            <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={() => setStep("subir")}>
               Volver
             </button>
-
             <Banner />
           </div>
         )}
@@ -739,31 +669,16 @@ export default function Asistente({ evento }) {
               <div className="eyebrow" style={{ marginBottom: 6 }}>FUNfoto IA</div>
               <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
             </div>
-
             {consejoSelfie}
-
-            <button
-              className="btn btn-primary btn-block"
-              style={{ marginBottom: 12 }}
-              onClick={() => fileRefIACamara.current?.click()}
-            >
+            <button className="btn btn-primary btn-block" style={{ marginBottom: 12 }} onClick={() => fileRefIACamara.current?.click()}>
               Tomar foto ahora
             </button>
-            <button
-              className="btn btn-ghost btn-block"
-              onClick={() => fileRefIAGaleria.current?.click()}
-            >
+            <button className="btn btn-ghost btn-block" onClick={() => fileRefIAGaleria.current?.click()}>
               Elegir de galería
             </button>
-
-            <button
-              className="btn btn-ghost btn-block"
-              style={{ marginTop: 20 }}
-              onClick={volverAlCatalogo}
-            >
+            <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={volverAlCatalogo}>
               Volver al catálogo
             </button>
-
             <Banner />
           </div>
         )}
@@ -772,30 +687,28 @@ export default function Asistente({ evento }) {
           <div className="rise">
             <div className="card" style={{ textAlign: "center" }}>
               {(generandoIA || errorIA) && preview && (
-                <img
-                  src={preview}
-                  alt="Tu foto"
-                  style={{
-                    width: "100%", maxWidth: 280, margin: "0 auto 18px",
-                    borderRadius: "var(--r-md)", aspectRatio: "9/16",
-                    objectFit: "cover", display: "block",
-                    border: "1px solid var(--border)",
-                    opacity: generandoIA ? 0.5 : 1,
-                  }}
-                />
+                <img src={preview} alt="Tu foto" style={{
+                  width: "100%", maxWidth: 280, margin: "0 auto 18px",
+                  borderRadius: "var(--r-md)", aspectRatio: "9/16",
+                  objectFit: "cover", display: "block",
+                  border: "1px solid var(--border)",
+                  opacity: generandoIA ? 0.5 : 1,
+                }} />
               )}
 
               {!generandoIA && iaLista && urlResultadoIA && (
-                <img
-                  src={urlResultadoIA}
-                  alt="Tu foto transformada con IA"
-                  style={{
-                    width: "100%", maxWidth: 280, margin: "0 auto 18px",
+                <>
+                  <img src={urlResultadoIA} alt="Tu foto transformada con IA" style={{
+                    width: "100%", maxWidth: 280, margin: "0 auto 10px",
                     borderRadius: "var(--r-md)", aspectRatio: "9/16",
                     objectFit: "cover", display: "block",
                     border: "1px solid var(--cyan)",
-                  }}
-                />
+                  }} />
+                  <button className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }}
+                    onClick={descargarFoto} disabled={descargandoFoto}>
+                    <Icon.Download size={14} /> {descargandoFoto ? "Preparando..." : "Descargar"}
+                  </button>
+                </>
               )}
 
               {generandoIA && (
@@ -819,12 +732,10 @@ export default function Asistente({ evento }) {
                 </>
               )}
 
-              {/* ----- Resultado listo, ANTES de usar la foto: 4 botones ----- */}
+              {/* Resultado listo, ANTES de usar la foto */}
               {!generandoIA && iaLista && !iaConfirmada && (
                 <>
-                  <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>
-                    ¿Te gusta el resultado?
-                  </h2>
+                  <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>¿Te gusta el resultado?</h2>
                   <p style={{ color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6, marginBottom: 6 }}>
                     Intento {intentosIA} de {MAX_INTENTOS_IA}
                   </p>
@@ -834,22 +745,14 @@ export default function Asistente({ evento }) {
                     </p>
                   )}
 
-                  <button
-                    className="btn btn-primary btn-block"
-                    style={{ marginTop: 14 }}
-                    onClick={confirmarFotoIA}
-                    disabled={confirmandoIA}
-                  >
+                  <button className="btn btn-primary btn-block" style={{ marginTop: 14 }}
+                    onClick={confirmarFotoIA} disabled={confirmandoIA}>
                     {confirmandoIA ? "Confirmando..." : "Usar esta foto"}
                   </button>
 
-                  <button
-                    className="btn btn-ghost btn-block"
-                    style={{ marginTop: 10 }}
-                    onClick={intentarDeNuevo}
-                    disabled={intentosIA >= MAX_INTENTOS_IA || confirmandoIA}
-                  >
-                    Probar otra vez
+                  <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }}
+                    onClick={volverAGenerar} disabled={intentosIA >= MAX_INTENTOS_IA || confirmandoIA}>
+                    Volver a generar
                   </button>
 
                   <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
@@ -863,29 +766,24 @@ export default function Asistente({ evento }) {
                 </>
               )}
 
-              {/* ----- Foto ya usada: solo Volver ----- */}
+              {/* Foto ya usada: solo Volver */}
               {!generandoIA && iaLista && iaConfirmada && (
                 <>
                   <div style={{
                     width: 56, height: 56, borderRadius: "50%", background: "var(--tint-cyan)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    margin: "0 auto 18px",
+                    display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px",
                   }}>
                     <Icon.Check size={26} color="var(--cyan)" />
                   </div>
-                  <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>
-                    ¡Listo!
-                  </h2>
+                  <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>¡Listo!</h2>
                   <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, marginBottom: 22 }}>
                     {textoTrasConfirmar}
                   </p>
-                  <button className="btn btn-ghost btn-block" onClick={reiniciar}>
-                    Volver
-                  </button>
+                  <button className="btn btn-ghost btn-block" onClick={reiniciar}>Volver</button>
                 </>
               )}
 
-              {/* ----- Error ----- */}
+              {/* Error */}
               {!generandoIA && errorIA && (
                 <>
                   <div className="chip chip-danger" style={{
@@ -901,12 +799,8 @@ export default function Asistente({ evento }) {
                         Intentar de nuevo
                       </button>
                       <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otraSelfie}>
-                          Otra selfie
-                        </button>
-                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otroModo}>
-                          Otro modo
-                        </button>
+                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otraSelfie}>Otra selfie</button>
+                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otroModo}>Otro modo</button>
                       </div>
                     </>
                   )}
@@ -925,14 +819,10 @@ export default function Asistente({ evento }) {
           <div className="rise">
             <div className="card">
               <div className="eyebrow" style={{ marginBottom: 12 }}>Revisa tu foto</div>
-              <img
-                src={preview}
-                alt="Vista previa de tu foto"
-                style={{
-                  width: "100%", borderRadius: "var(--r-md)", aspectRatio: "4/3",
-                  objectFit: "cover", marginBottom: 18, border: "1px solid var(--border)",
-                }}
-              />
+              <img src={preview} alt="Vista previa de tu foto" style={{
+                width: "100%", borderRadius: "var(--r-md)", aspectRatio: "4/3",
+                objectFit: "cover", marginBottom: 18, border: "1px solid var(--border)",
+              }} />
 
               <button
                 onClick={() => setAutorizada(!autorizada)}
@@ -962,9 +852,7 @@ export default function Asistente({ evento }) {
               )}
 
               <div style={{ display: "flex", gap: 10 }}>
-                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reiniciar} disabled={enviando}>
-                  Cambiar
-                </button>
+                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reiniciar} disabled={enviando}>Cambiar</button>
                 <button className="btn btn-primary" style={{ flex: 1 }} onClick={enviar} disabled={enviando}>
                   {enviando ? "Enviando..." : "Enviar foto"}
                 </button>
@@ -979,8 +867,7 @@ export default function Asistente({ evento }) {
             <div className="card" style={{ textAlign: "center" }}>
               <div style={{
                 width: 56, height: 56, borderRadius: "50%", background: "var(--tint-cyan)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                margin: "0 auto 18px",
+                display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px",
               }}>
                 <Icon.Check size={26} color="var(--cyan)" />
               </div>
@@ -1011,9 +898,7 @@ function Banner() {
         padding: 18, background: "var(--surface)", border: "1px solid var(--border)",
         borderRadius: "var(--r-lg)", textAlign: "center",
       }}>
-        <div className="display" style={{ fontSize: 15, marginBottom: 6 }}>
-          ¿Quieres esto en tu evento?
-        </div>
+        <div className="display" style={{ fontSize: 15, marginBottom: 6 }}>¿Quieres esto en tu evento?</div>
         <div style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 14, lineHeight: 1.5 }}>
           Pantallas LED para bodas, cumpleaños y eventos en Punta Arenas.
         </div>
