@@ -1,39 +1,37 @@
 // api/generarFoto.js
 //
-// PASO 1 del flujo de 2 pasos. Esta función SOLO crea la tarea en WaveSpeed
-// y devuelve el taskId de inmediato, no espera el resultado. Así nunca se
-// acerca al límite de 60s de Vercel, sin importar cuánto tarde WaveSpeed en
+// PASO 1 del flujo de 2 pasos. Esta funcion SOLO crea la tarea en WaveSpeed
+// y devuelve el taskId de inmediato, no espera el resultado. Asi nunca se
+// acerca al limite de 60s de Vercel, sin importar cuanto tarde WaveSpeed en
 // generar la imagen.
 //
-// El frontend, después de recibir el taskId, llama repetidamente a
-// api/consultarFoto.js (cada ~3 seg) hasta que la imagen esté lista.
+// El frontend, despues de recibir el taskId, llama repetidamente a
+// api/consultarFoto.js (cada ~3 seg) hasta que la imagen este lista.
 //
 // RUTEO POR MOTOR (Sept 2026):
 // - Simpsons y Barbie SIEMPRE usan Seedream 4.5, sin importar el tier del
-//   evento (4.5 logra el look caricaturesco/plástico que 5.0 no consigue,
-//   porque 5.0 fuerza demasiado realismo).
+//   evento.
 // - Los modos del bloque DIVERTIDOS SIEMPRE usan GPT Image 2 (medium) y
-//   solo están disponibles en eventos premium. Si un evento base intenta
+//   solo estan disponibles en eventos premium. Si un evento base intenta
 //   usarlos, el servidor rechaza la solicitud.
-// - Todo lo demás usa evento.motor_ia: 'base' -> Seedream 5.0 Pro (1k),
+// - Todo lo demas usa evento.motor_ia: 'base' -> Seedream 5.0 Pro (1k),
 //   'premium' -> GPT Image 2 (medium).
-// - Cada motor tiene su propio formato de body (Seedream 4.5 usa "size" en
-//   formato antiguo, Seedream 5.0 y GPT Image usan "aspect_ratio" + "resolution").
 //
-// CUOTA (Sept 2026):
-// - Se cuentan TODAS las fotos IA generadas del evento (confirmadas o no),
-//   porque cada generación le cuesta a WaveSpeed.
-// - Si el evento no tiene cuota definida (eventos antiguos), se aplica un
-//   tope de seguridad para que nunca genere sin límite.
-// - El bloqueo ocurre ANTES de llamar a WaveSpeed: si la cuota está llena,
-//   no se crea la tarea y no hay cobro.
+// CUOTA (Oct 2026):
+// - El contador vive en eventos.ia_usadas, no en la tabla fotos. Asi borrar
+//   fotos o borradores no reinicia la cuota.
+// - Antes de llamar a WaveSpeed se RESERVA el cupo con la funcion SQL
+//   reservar_foto_ia, que suma 1 solo si queda espacio, todo de una vez.
+//   Esto evita que varias personas generando al mismo tiempo se pasen.
+// - Si el evento no tiene cuota definida, la funcion SQL aplica un tope
+//   de seguridad de 30.
+// - Si WaveSpeed rechaza la tarea, se devuelve el cupo con liberar_foto_ia.
 
 const { createClient } = require('@supabase/supabase-js');
 const { getPromptAleatorio, DOMINIO_BASE } = require('../lib/prompts');
 
 // ---------------------------------------------------------------------------
-// Configuración de motores: endpoint + body específico de cada uno.
-// Agregar un motor nuevo en el futuro es solo sumar una entrada acá.
+// Configuracion de motores: endpoint + body especifico de cada uno.
 // ---------------------------------------------------------------------------
 const MOTORES = {
   seedream_4_5: {
@@ -67,12 +65,9 @@ const MOTORES = {
 };
 
 // Modos que SIEMPRE usan Seedream 4.5, sin importar el tier contratado.
-// Motivo: 4.5 logra mejor el look caricaturesco/plástico que 5.0, que fuerza
-// un realismo que no sirve para estos modos.
 const MODOS_FIJOS_SEEDREAM_45 = ['simpsons', 'barbie'];
 
-// Bloque DIVERTIDOS: filtros tipo Snapchat. SIEMPRE usan GPT Image y SOLO
-// están disponibles en eventos premium.
+// Bloque DIVERTIDOS: SIEMPRE usan GPT Image y SOLO en eventos premium.
 const MODOS_DIVERTIDOS = [
   'ojos_saltones',
   'maquillaje_tia',
@@ -84,15 +79,12 @@ const MODOS_DIVERTIDOS = [
   'cara_aplastada',
 ];
 
-// Tope de seguridad para eventos sin cuota definida (eventos antiguos).
-const TOPE_SEGURIDAD_SIN_CUOTA = 30;
-
 // Mensaje cuando el evento llega a su cuota. Debe contener la palabra
-// "límite": el Asistente la usa para no mostrar el botón "Intentar de nuevo".
+// "límite": el Asistente la usa para no mostrar el boton "Intentar de nuevo".
 const MENSAJE_CUOTA_AGOTADA =
   'Este evento llegó a su límite de fotos. Consulta con el organizador para seguir usando FUNfoto IA.';
 
-// Decide qué motor usar según el modo pedido y el tier contratado por el evento.
+// Decide que motor usar segun el modo pedido y el tier contratado.
 function resolverMotor(modo, motorDelEvento) {
   if (MODOS_FIJOS_SEEDREAM_45.includes(modo)) {
     return 'seedream_4_5';
@@ -101,6 +93,14 @@ function resolverMotor(modo, motorDelEvento) {
     return 'gpt_image_medium';
   }
   return motorDelEvento === 'premium' ? 'gpt_image_medium' : 'seedream_5_0';
+}
+
+// Devuelve un cupo reservado. Si falla, solo se registra en el log.
+async function liberarCupo(supabase, eventoId) {
+  const { error } = await supabase.rpc('liberar_foto_ia', { p_evento: eventoId });
+  if (error) {
+    console.error('No se pudo liberar el cupo IA:', error);
+  }
 }
 
 module.exports = async function handler(req, res) {
@@ -135,60 +135,53 @@ module.exports = async function handler(req, res) {
   );
 
   // ---------------------------------------------------------------------
-  // Control de acceso: IA habilitada + motor contratado + cuota del evento.
+  // Control de acceso: IA habilitada + motor contratado.
   // ---------------------------------------------------------------------
   const { data: evento, error: errorEvento } = await supabase
     .from('eventos')
-    .select('cuota_ia, ia_habilitada, motor_ia')
+    .select('ia_habilitada, motor_ia')
     .eq('id', eventoId)
     .single();
 
-  if (errorEvento) {
+  if (errorEvento || !evento) {
     return res.status(500).json({ error: 'No se pudo verificar el evento' });
   }
 
-  if (evento?.ia_habilitada === false) {
+  if (evento.ia_habilitada === false) {
     return res.status(403).json({
       error: 'FUNfoto IA no está disponible para este evento',
     });
   }
 
-  // Los modos DIVERTIDOS solo están incluidos en el plan premium.
-  if (MODOS_DIVERTIDOS.includes(modo) && evento?.motor_ia !== 'premium') {
+  // Los modos DIVERTIDOS solo estan incluidos en el plan premium.
+  if (MODOS_DIVERTIDOS.includes(modo) && evento.motor_ia !== 'premium') {
     return res.status(403).json({
       error: 'Este modo solo está disponible en el plan premium',
     });
   }
 
-  // Cuota: si el evento no tiene una definida, se usa el tope de seguridad.
-  const cuotaEfectiva =
-    evento?.cuota_ia !== null && evento?.cuota_ia !== undefined && evento.cuota_ia > 0
-      ? evento.cuota_ia
-      : TOPE_SEGURIDAD_SIN_CUOTA;
+  // ---------------------------------------------------------------------
+  // Cuota: reservar un cupo ANTES de llamar a WaveSpeed.
+  // ---------------------------------------------------------------------
+  const { data: hayCupo, error: errorCupo } = await supabase.rpc('reservar_foto_ia', {
+    p_evento: eventoId,
+  });
 
-  const { count, error: errorConteo } = await supabase
-    .from('fotos')
-    .select('id', { count: 'exact', head: true })
-    .eq('evento_id', eventoId)
-    .eq('es_ia', true);
-
-  if (errorConteo) {
+  if (errorCupo) {
+    console.error('Error reservando cupo IA:', errorCupo);
     return res.status(500).json({ error: 'No se pudo verificar la cuota de fotos IA' });
   }
 
-  if (count >= cuotaEfectiva) {
+  if (hayCupo !== true) {
     return res.status(403).json({ error: MENSAJE_CUOTA_AGOTADA });
   }
 
-  // Resuelve qué motor usar (Simpsons y Barbie fuerzan 4.5, DIVERTIDOS fuerzan GPT;
-  // el resto sigue motor_ia).
+  // Desde aqui el cupo ya esta descontado. Si algo falla al crear la tarea,
+  // se devuelve en el catch.
   const motorId = resolverMotor(modo, evento.motor_ia);
   const motor = MOTORES[motorId];
 
   try {
-    // ---------------------------------------------------------------------
-    // Solo CREA la tarea, no espera el resultado.
-    // ---------------------------------------------------------------------
     const creacion = await fetch(motor.endpoint, {
       method: 'POST',
       headers: {
@@ -215,12 +208,13 @@ module.exports = async function handler(req, res) {
       taskId,
       modo,
       eventoId,
-      motorUsado: motorId, // se le pasa a consultarFoto.js para guardarlo en la fila de fotos
+      motorUsado: motorId,
     });
   } catch (error) {
     console.error('Error en generarFoto:', error);
+    await liberarCupo(supabase, eventoId);
     return res.status(500).json({
       error: error.message || 'Error creando la generación con IA',
     });
   }
-}
+};
