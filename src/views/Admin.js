@@ -17,6 +17,12 @@ const CLP_POR_USD_RESPALDO = 950;
 const FACTOR_UTILIDAD = 1.4;
 const TASA_IVA = 0.19;
 
+// Tope de seguridad para eventos sin cuota (debe coincidir con la función SQL).
+const TOPE_SEGURIDAD_SIN_CUOTA = 30;
+
+// Los archivos huérfanos solo se borran si tienen más de estas horas.
+const HORAS_MINIMAS_HUERFANO = 24;
+
 const TIERS = [
   { id: "base", nombre: "Base" },
   { id: "premium", nombre: "Premium" },
@@ -33,7 +39,93 @@ const OPCIONES_PLAN = PLANES_FOTOS.map((p) => ({ id: p.id, nombre: `${p.nombre} 
 
 const planPorId = (id) => PLANES_FOTOS.find((p) => p.id === id) || PLANES_FOTOS[0];
 const clp = (n) => `$${Math.round(n).toLocaleString("es-CL")}`;
+const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 const MENSAJE_FALTAN_INVITADOS = "Ingresa el número de invitados para calcular la cuota y el precio";
+
+// Precio sugerido (con IVA) de N fotos IA según el tier y el dólar.
+const precioSugerido = (n, tier, dolar) => {
+  const costo = COSTOS_USD_POR_FOTO_IA[tier] || COSTOS_USD_POR_FOTO_IA.base;
+  return n * costo * dolar * FACTOR_UTILIDAD * (1 + TASA_IVA);
+};
+
+// Redondea a múltiplos de 5, mínimo 5.
+const redondear5 = (x) => Math.max(5, Math.round(x / 5) * 5);
+
+// Sugerencias para "Agregar cuota": +1 por persona, ~25% y ~50% de la cuota.
+const sugerenciasCuota = (ev) => {
+  const lista = [];
+  if (ev.invitados > 0) lista.push({ etiqueta: "+1 por persona", n: ev.invitados });
+  const cuota = ev.cuota_ia || 0;
+  if (cuota > 0) {
+    const n25 = redondear5(cuota * 0.25);
+    const n50 = redondear5(cuota * 0.5);
+    lista.push({ etiqueta: `+${n25}`, n: n25 });
+    lista.push({ etiqueta: `+${n50}`, n: n50 });
+  }
+  const vistos = new Set();
+  return lista.filter((s) => {
+    if (vistos.has(s.n)) return false;
+    vistos.add(s.n);
+    return true;
+  });
+};
+
+/* ---------- Ayudantes de almacenamiento (bucket fotos) ---------- */
+
+// Borra archivos del bucket en lotes de 100.
+async function borrarEnLotes(nombres) {
+  for (let i = 0; i < nombres.length; i += 100) {
+    const lote = nombres.slice(i, i + 100);
+    const { error } = await supabase.storage.from("fotos").remove(lote);
+    if (error) throw error;
+  }
+}
+
+// Lista todos los archivos de la raíz del bucket (pagina de a 1000).
+async function listarRaizBucket(busqueda) {
+  const todos = [];
+  let offset = 0;
+  for (;;) {
+    const opciones = { limit: 1000, offset, sortBy: { column: "name", order: "asc" } };
+    if (busqueda) opciones.search = busqueda;
+    const { data, error } = await supabase.storage.from("fotos").list("", opciones);
+    if (error) throw error;
+    const lote = data || [];
+    todos.push(...lote);
+    if (lote.length < 1000) break;
+    offset += 1000;
+  }
+  // Las carpetas vienen con id null: se ignoran.
+  return todos.filter((a) => a.id);
+}
+
+// Nombres de archivo que sí pertenecen a una fila de la tabla fotos.
+async function nombresReferenciados() {
+  const usados = new Set();
+  let desde = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from("fotos").select("url").range(desde, desde + 999);
+    if (error) throw error;
+    const lote = data || [];
+    lote.forEach((f) => {
+      const nombre = (f.url || "").split("/fotos/")[1];
+      if (nombre) usados.add(nombre);
+    });
+    if (lote.length < 1000) break;
+    desde += 1000;
+  }
+  return usados;
+}
+
+// Borra las selfies originales que el Asistente sube para la IA.
+async function borrarOriginalesDeEvento(eventoId) {
+  const prefijo = `original_${eventoId}_`;
+  const archivos = await listarRaizBucket(prefijo);
+  const nombres = archivos.map((a) => a.name).filter((n) => n.startsWith(prefijo));
+  if (nombres.length) await borrarEnLotes(nombres);
+  return nombres.length;
+}
 
 export default function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -56,6 +148,10 @@ export default function Admin() {
   const [editando, setEditando] = useState({});      // { [eventoId]: { nombre, clave, invitados, plan } }
   const [guardando, setGuardando] = useState(null);  // eventoId que está guardando
   const [extraInput, setExtraInput] = useState({});  // { [eventoId]: "50" }
+  const [confirmarReinicio, setConfirmarReinicio] = useState(null); // eventoId
+  const [huerfanos, setHuerfanos] = useState(null);  // { nombres: [], bytes: 0 }
+  const [buscandoHuerfanos, setBuscandoHuerfanos] = useState(false);
+  const [limpiando, setLimpiando] = useState(false);
   const [operadores, setOperadores] = useState([]);
   const [verOps, setVerOps] = useState(false);
   const [opsSel, setOpsSel] = useState([]);
@@ -188,29 +284,39 @@ export default function Admin() {
     }
   };
 
-  const borrarFotos = async (ev) => {
-    if (!window.confirm(`¿Borrar todas las fotos de "${ev.nombre}"?`)) return;
+  /* Borra las fotos del evento (archivos + filas) y las selfies originales.
+     No toca el contador de IA usadas. */
+  const borrarArchivosDeEvento = async (ev) => {
     const { data: fs } = await supabase.from("fotos").select("url").eq("evento_id", ev.id);
     if (fs?.length) {
-      const paths = fs.map((f) => f.url.split("/fotos/")[1]).filter(Boolean);
-      if (paths.length) await supabase.storage.from("fotos").remove(paths);
+      const paths = fs.map((f) => (f.url || "").split("/fotos/")[1]).filter(Boolean);
+      if (paths.length) await borrarEnLotes(paths);
     }
     await supabase.from("fotos").delete().eq("evento_id", ev.id);
-    setToast("Fotos borradas");
+    await borrarOriginalesDeEvento(ev.id);
+  };
+
+  const borrarFotos = async (ev) => {
+    if (!window.confirm(`¿Borrar todas las fotos de "${ev.nombre}"? También se borran las selfies originales. La cuota de IA no cambia.`)) return;
+    try {
+      await borrarArchivosDeEvento(ev);
+      setToast("Fotos borradas");
+    } catch {
+      setToast("No se pudieron borrar todas las fotos");
+    }
     cargarEventos();
   };
 
   const eliminarEvento = async (ev) => {
     if (!window.confirm(`¿Eliminar "${ev.nombre}" y todo su contenido? Esto no se puede deshacer.`)) return;
-    const { data: fs } = await supabase.from("fotos").select("url").eq("evento_id", ev.id);
-    if (fs?.length) {
-      const paths = fs.map((f) => f.url.split("/fotos/")[1]).filter(Boolean);
-      if (paths.length) await supabase.storage.from("fotos").remove(paths);
+    try {
+      await borrarArchivosDeEvento(ev);
+      await supabase.from("operadores").delete().eq("evento_id", ev.id);
+      await supabase.from("eventos").delete().eq("id", ev.id);
+      setToast(`"${ev.nombre}" eliminado`);
+    } catch {
+      setToast("No se pudo eliminar todo el contenido");
     }
-    await supabase.from("fotos").delete().eq("evento_id", ev.id);
-    await supabase.from("operadores").delete().eq("evento_id", ev.id);
-    await supabase.from("eventos").delete().eq("id", ev.id);
-    setToast(`"${ev.nombre}" eliminado`);
     cargarEventos();
   };
 
@@ -247,6 +353,7 @@ export default function Admin() {
   const abrirExpandido = (ev) => {
     const abierto = expandido === ev.id;
     setExpandido(abierto ? null : ev.id);
+    setConfirmarReinicio(null);
     if (!abierto) {
       setEditando((prev) => ({
         ...prev,
@@ -287,16 +394,35 @@ export default function Admin() {
     cargarEventos();
   };
 
-  const agregarCuota = (ev) => {
-    const n = parseInt(extraInput[ev.id], 10);
-    if (!n || n <= 0) { setToast("Escribe cuántas fotos agregar"); return; }
+  /* Suma N fotos a la cuota actual (no la reemplaza). */
+  const sumarCuota = (ev, n) => {
+    if (!n || n <= 0) { setToast("Escribe cuántas fotos agregar"); return false; }
     if (ev.cuota_ia === null || ev.cuota_ia === undefined) {
       setToast("Primero define los invitados y guarda la configuración");
-      return;
+      return false;
     }
     const nueva = ev.cuota_ia + n;
     actualizar(ev, { cuota_ia: nueva }, `Se agregaron ${n} fotos. Cuota total: ${nueva}`);
-    setExtraInput((prev) => ({ ...prev, [ev.id]: "" }));
+    return true;
+  };
+
+  const agregarCuota = (ev) => {
+    const n = parseInt(extraInput[ev.id], 10);
+    if (sumarCuota(ev, n)) {
+      setExtraInput((prev) => ({ ...prev, [ev.id]: "" }));
+    }
+  };
+
+  const agregarSugerencia = (ev, n) => {
+    const total = (ev.cuota_ia || 0) + n;
+    if (!window.confirm(`¿Agregar ${n} fotos? La cuota queda en ${total}.`)) return;
+    sumarCuota(ev, n);
+  };
+
+  /* Deja el contador de IA usadas en 0. Solo para pruebas. */
+  const reiniciarContador = (ev) => {
+    setConfirmarReinicio(null);
+    actualizar(ev, { ia_usadas: 0 }, "Contador de IA reiniciado");
   };
 
   const regenerarClave = async (ev) => {
@@ -317,6 +443,42 @@ export default function Admin() {
   const copiar = (texto, etiqueta) => {
     navigator.clipboard.writeText(texto);
     setToast(`${etiqueta} copiado`);
+  };
+
+  /* ---------- Mantenimiento: archivos huérfanos ---------- */
+  const buscarHuerfanos = async () => {
+    setBuscandoHuerfanos(true);
+    try {
+      const [archivos, usados] = await Promise.all([listarRaizBucket(), nombresReferenciados()]);
+      const limite = Date.now() - HORAS_MINIMAS_HUERFANO * 60 * 60 * 1000;
+      const lista = archivos.filter((a) =>
+        !usados.has(a.name) && a.created_at && new Date(a.created_at).getTime() < limite);
+      if (!lista.length) {
+        setToast("No hay archivos huérfanos para borrar");
+        setHuerfanos(null);
+      } else {
+        const bytes = lista.reduce((s, a) => s + (a.metadata?.size || 0), 0);
+        setHuerfanos({ nombres: lista.map((a) => a.name), bytes });
+      }
+    } catch {
+      setToast("No se pudo revisar el almacenamiento");
+    } finally {
+      setBuscandoHuerfanos(false);
+    }
+  };
+
+  const limpiarHuerfanos = async () => {
+    if (!huerfanos?.nombres?.length) return;
+    setLimpiando(true);
+    try {
+      await borrarEnLotes(huerfanos.nombres);
+      setToast(`${huerfanos.nombres.length} archivos borrados (${mb(huerfanos.bytes)})`);
+      setHuerfanos(null);
+    } catch {
+      setToast("No se pudieron borrar todos los archivos");
+    } finally {
+      setLimpiando(false);
+    }
   };
 
   /* ---------- Operadores ---------- */
@@ -561,6 +723,7 @@ export default function Admin() {
             const invitadosVista = camposEd.invitados ?? (ev.invitados ?? "");
             const invNum = parseInt(invitadosVista, 10) || 0;
             const cuotaVista = invNum ? invNum * planVista.fotos + extra : (ev.cuota_ia || 0);
+            const sugerencias = sugerenciasCuota(ev);
 
             return (
               <div key={ev.id} className="card">
@@ -610,6 +773,11 @@ export default function Admin() {
                   <Stat label="Aprobadas" value={c.approved} color="var(--ok)" />
                   <Stat label="En espera" value={c.pending} color="var(--warn)" />
                 </div>
+
+                {/* Contador de IA usadas */}
+                {ev.ia_habilitada !== false && (
+                  <ContadorIA usadas={ev.ia_usadas || 0} cuota={ev.cuota_ia} />
+                )}
 
                 {/* Panel expandido */}
                 {abierto && (
@@ -731,6 +899,39 @@ export default function Admin() {
                       {/* --- Agregar cuota (se guarda al tiro) --- */}
                       <div style={{ marginTop: 8 }}>
                         <label className="label">Agregar cuota extra</label>
+                        {ev.cuota_ia ? (
+                          <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 8 }}>
+                            Cuota actual: {ev.cuota_ia} fotos · usadas {ev.ia_usadas || 0}
+                          </div>
+                        ) : null}
+
+                        {sugerencias.length > 0 && (
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                            {sugerencias.map((s) => (
+                              <button
+                                key={s.n}
+                                onClick={() => agregarSugerencia(ev, s.n)}
+                                style={{
+                                  flex: 1, minWidth: 140, cursor: "pointer", textAlign: "left",
+                                  padding: "10px 12px", borderRadius: "var(--r-sm)",
+                                  background: "var(--bg)", border: "1px solid var(--border)",
+                                  fontFamily: "var(--font-body)",
+                                }}
+                              >
+                                <div style={{ fontSize: 13, color: "var(--cyan)", fontWeight: 600 }}>
+                                  {s.etiqueta}
+                                </div>
+                                <div style={{ fontSize: 12, color: "var(--text)", marginTop: 3 }}>
+                                  +{s.n} fotos · total {(ev.cuota_ia || 0) + s.n}
+                                </div>
+                                <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>
+                                  ~{clp(precioSugerido(s.n, tierEv, dolar.valor))} con IVA
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
                         <div style={{ display: "flex", gap: 8 }}>
                           <input
                             className="input"
@@ -738,14 +939,53 @@ export default function Admin() {
                             min="1"
                             value={extraInput[ev.id] ?? ""}
                             onChange={(e) => setExtraInput((prev) => ({ ...prev, [ev.id]: e.target.value }))}
-                            placeholder="Ej: 50"
+                            placeholder="Otra cantidad"
                           />
                           <button className="btn btn-ghost btn-sm" onClick={() => agregarCuota(ev)}>
                             <Icon.Plus size={14} /> Agregar
                           </button>
                         </div>
+                        {parseInt(extraInput[ev.id], 10) > 0 && (
+                          <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>
+                            Total {(ev.cuota_ia || 0) + parseInt(extraInput[ev.id], 10)} · ~
+                            {clp(precioSugerido(parseInt(extraInput[ev.id], 10), tierEv, dolar.valor))} con IVA
+                          </div>
+                        )}
                         <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
                           Suma fotos a la cuota actual sin reemplazarla. Úsalo para vender extensiones durante el evento.
+                        </div>
+                      </div>
+
+                      {/* --- Reiniciar contador (doble confirmación) --- */}
+                      <div style={{ marginTop: 8 }}>
+                        <label className="label">Contador de IA</label>
+                        {confirmarReinicio === ev.id ? (
+                          <div style={{
+                            padding: 12, border: "1px solid var(--danger)",
+                            borderRadius: "var(--r-sm)", background: "var(--bg)",
+                          }}>
+                            <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5, marginBottom: 10 }}>
+                              ¿Seguro? El evento recupera toda su cuota
+                              ({ev.cuota_ia || TOPE_SEGURIDAD_SIN_CUOTA} fotos). Úsalo solo para pruebas.
+                            </div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button className="btn btn-ghost btn-sm" style={{ flex: 1 }}
+                                onClick={() => setConfirmarReinicio(null)}>
+                                Cancelar
+                              </button>
+                              <button className="btn btn-danger btn-sm" style={{ flex: 1 }}
+                                onClick={() => reiniciarContador(ev)}>
+                                Sí, reiniciar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button className="btn btn-ghost btn-sm" onClick={() => setConfirmarReinicio(ev.id)}>
+                            <Icon.Refresh size={14} /> Reiniciar contador ({ev.ia_usadas || 0} usadas)
+                          </button>
+                        )}
+                        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
+                          Solo para pruebas. Para vender más fotos usa "Agregar cuota extra".
                         </div>
                       </div>
 
@@ -843,6 +1083,46 @@ export default function Admin() {
         </div>
       )}
 
+      {/* Mantenimiento del almacenamiento */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Icon.Trash size={17} color="var(--text-dim)" />
+            <span className="display" style={{ fontSize: 16 }}>Limpiar almacenamiento</span>
+          </div>
+          {!huerfanos && (
+            <button className="btn btn-ghost btn-sm" onClick={buscarHuerfanos} disabled={buscandoHuerfanos}>
+              {buscandoHuerfanos ? "Buscando..." : "Buscar archivos huérfanos"}
+            </button>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8, lineHeight: 1.5 }}>
+          Busca archivos que no pertenecen a ninguna foto (por ejemplo, selfies originales usadas para la IA)
+          con más de {HORAS_MINIMAS_HUERFANO} horas. No lo uses en medio de un evento de varios días.
+        </div>
+        {huerfanos && (
+          <div style={{
+            marginTop: 14, padding: 12, border: "1px solid var(--danger)",
+            borderRadius: "var(--r-sm)", background: "var(--bg)",
+          }}>
+            <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5, marginBottom: 10 }}>
+              Se encontraron {huerfanos.nombres.length} archivos huérfanos ({mb(huerfanos.bytes)}).
+              ¿Borrarlos? No se puede deshacer.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" style={{ flex: 1 }}
+                onClick={() => setHuerfanos(null)} disabled={limpiando}>
+                Cancelar
+              </button>
+              <button className="btn btn-danger btn-sm" style={{ flex: 1 }}
+                onClick={limpiarHuerfanos} disabled={limpiando}>
+                {limpiando ? "Borrando..." : "Sí, borrar"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Historial de operadores */}
       <div className="card" style={{ marginTop: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -926,6 +1206,28 @@ export default function Admin() {
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* Barra de IA usadas / cuota. Se pone roja desde el 75%. */
+function ContadorIA({ usadas, cuota }) {
+  const conCuota = cuota !== null && cuota !== undefined && cuota > 0;
+  const tope = conCuota ? cuota : TOPE_SEGURIDAD_SIN_CUOTA;
+  const pct = Math.min(100, Math.round((usadas / tope) * 100));
+  const alerta = pct >= 75;
+  const color = alerta ? "var(--danger)" : "var(--cyan)";
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+        <span style={{ color: "var(--text-dim)" }}>IA usadas</span>
+        <span style={{ color, fontWeight: 600 }}>
+          {usadas} / {tope}{conCuota ? "" : " (tope de seguridad)"}
+        </span>
+      </div>
+      <div style={{ height: 6, borderRadius: 100, background: "var(--border)", marginTop: 6, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, transition: "width 0.3s ease" }} />
       </div>
     </div>
   );
