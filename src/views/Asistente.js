@@ -88,6 +88,8 @@ export default function Asistente({ evento }) {
   const [confirmandoIA, setConfirmandoIA] = useState(false);
   const [iaConfirmada, setIaConfirmada] = useState(false);
   const [modoSeleccionado, setModoSeleccionado] = useState(null);
+  // "Otro modo": el invitado vuelve al catálogo y reutiliza la misma foto.
+  const [reusarFoto, setReusarFoto] = useState(false);
   const MAX_INTENTOS_IA = 2;
 
   const fileRef = useRef();
@@ -159,58 +161,7 @@ export default function Asistente({ evento }) {
     }
   };
 
-  const elegirModo = (modoId) => {
-    if (modoId === "futbol_fan") {
-      setStep("catalogo-futbol");
-      return;
-    }
-    modoParaSubidaRef.current = modoId;
-    setStep("elegir-fuente-ia");
-  };
-
-  const elegirSubmodoFutbol = (modoId) => {
-    modoParaSubidaRef.current = modoId;
-    setStep("elegir-fuente-ia");
-  };
-
-  const tomarArchivoIA = (f) => {
-    if (!f) return;
-    if (!f.type.startsWith("image/")) {
-      setError("Ese archivo no es una imagen. Elige una foto.");
-      return;
-    }
-    const modo = modoParaSubidaRef.current;
-    if (!modo) return;
-
-    setError("");
-    setFile(f);
-    setIntentosIA(0);
-    setIaConfirmada(false);
-    setModoSeleccionado(modo);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setPreview(e.target.result);
-      setStep("ia");
-      generarConIA(f, modo);
-    };
-    reader.readAsDataURL(f);
-  };
-
   const seguirGenerandoRef = useRef(true);
-
-  // Contador que avanza cada medio segundo mientras se genera:
-  // mueve los puntitos y cambia el mensaje cada 5 segundos.
-  const [tickGenerando, setTickGenerando] = useState(0);
-  useEffect(() => {
-    if (!generandoIA) {
-      setTickGenerando(0);
-      return;
-    }
-    const t = setInterval(() => setTickGenerando((n) => n + 1), 500);
-    return () => clearInterval(t);
-  }, [generandoIA]);
-  const puntosGenerando = ".".repeat(tickGenerando % 4);
-  const mensajeGenerando = MENSAJES_GENERANDO[Math.floor(tickGenerando / 10) % MENSAJES_GENERANDO.length];
 
   const generarConIA = async (fileParaIA, modo) => {
     const fileAUsar = fileParaIA || file;
@@ -293,6 +244,77 @@ export default function Asistente({ evento }) {
     }
   };
 
+  // Si el invitado vino desde "Otro modo", genera de inmediato con la misma foto.
+  const iniciarConFotoGuardada = (modoId) => {
+    modoParaSubidaRef.current = modoId;
+    setModoSeleccionado(modoId);
+    setIntentosIA(0);
+    setIaConfirmada(false);
+    setReusarFoto(false);
+    setStep("ia");
+    generarConIA(file, modoId);
+  };
+
+  const elegirModo = (modoId) => {
+    if (modoId === "futbol_fan") {
+      setStep("catalogo-futbol");
+      return;
+    }
+    if (reusarFoto && file) {
+      iniciarConFotoGuardada(modoId);
+      return;
+    }
+    modoParaSubidaRef.current = modoId;
+    setStep("elegir-fuente-ia");
+  };
+
+  const elegirSubmodoFutbol = (modoId) => {
+    if (reusarFoto && file) {
+      iniciarConFotoGuardada(modoId);
+      return;
+    }
+    modoParaSubidaRef.current = modoId;
+    setStep("elegir-fuente-ia");
+  };
+
+  const tomarArchivoIA = (f) => {
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      setError("Ese archivo no es una imagen. Elige una foto.");
+      return;
+    }
+    const modo = modoParaSubidaRef.current;
+    if (!modo) return;
+
+    setError("");
+    setFile(f);
+    setIntentosIA(0);
+    setIaConfirmada(false);
+    setModoSeleccionado(modo);
+    setReusarFoto(false);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPreview(e.target.result);
+      setStep("ia");
+      generarConIA(f, modo);
+    };
+    reader.readAsDataURL(f);
+  };
+
+  // Contador que avanza cada medio segundo mientras se genera:
+  // mueve los puntitos y cambia el mensaje cada 5 segundos.
+  const [tickGenerando, setTickGenerando] = useState(0);
+  useEffect(() => {
+    if (!generandoIA) {
+      setTickGenerando(0);
+      return;
+    }
+    const t = setInterval(() => setTickGenerando((n) => n + 1), 500);
+    return () => clearInterval(t);
+  }, [generandoIA]);
+  const puntosGenerando = ".".repeat(tickGenerando % 4);
+  const mensajeGenerando = MENSAJES_GENERANDO[Math.floor(tickGenerando / 10) % MENSAJES_GENERANDO.length];
+
   const intentarDeNuevo = () => {
     if (intentosIA >= MAX_INTENTOS_IA) return;
     setIaLista(false);
@@ -306,18 +328,30 @@ export default function Asistente({ evento }) {
     generarConIA(file, modoSeleccionado);
   };
 
-  // Cambiar de foto: mantiene el modo elegido y vuelve a la pantalla
-  // "Tomar foto / Elegir de galería" para usar otra selfie.
-  const cambiarDeFoto = () => {
-    const modoActual = modoSeleccionado || modoParaSubidaRef.current;
+  // Limpia el resultado actual sin borrar la foto ni el modo.
+  const limpiarResultado = () => {
     seguirGenerandoRef.current = false;
-    setPreview(null); setFile(null); setError("");
     setGenerandoIA(false); setErrorIA(""); setErrorReintentable(true); setIaLista(false);
     setUrlResultadoIA(null); setFotoIdIA(null);
     setConfirmandoIA(false); setIaConfirmada(false);
+  };
+
+  // Otra selfie: mantiene el modo elegido y vuelve a "Tomar foto / Elegir de galería".
+  const otraSelfie = () => {
+    const modoActual = modoSeleccionado || modoParaSubidaRef.current;
+    limpiarResultado();
+    setPreview(null); setFile(null); setError(""); setReusarFoto(false);
     if (!modoActual) { reiniciar(); return; }
     modoParaSubidaRef.current = modoActual;
     setStep("elegir-fuente-ia");
+  };
+
+  // Otro modo: mantiene la misma foto y vuelve al catálogo para elegir otro modo.
+  const otroModo = () => {
+    if (!file) { reiniciar(); return; }
+    limpiarResultado();
+    setReusarFoto(true);
+    setStep("catalogo");
   };
 
   const confirmarFotoIA = async () => {
@@ -343,7 +377,7 @@ export default function Asistente({ evento }) {
   const reiniciar = () => {
     seguirGenerandoRef.current = false;
     setStep("subir"); setPreview(null); setFile(null);
-    setAutorizada(true); setError(""); setAprobadaDirecto(false);
+    setAutorizada(true); setError(""); setAprobadaDirecto(false); setReusarFoto(false);
     setGenerandoIA(false); setErrorIA(""); setErrorReintentable(true); setIaLista(false);
     setUrlResultadoIA(null); setFotoIdIA(null); setIntentosIA(0);
     setConfirmandoIA(false); setIaConfirmada(false); setModoSeleccionado(null);
@@ -368,6 +402,34 @@ export default function Asistente({ evento }) {
       />
     );
   }
+
+  // Aviso que se muestra en los catálogos cuando se reutiliza la misma foto.
+  const avisoMismaFoto = reusarFoto && preview ? (
+    <div className="card card-tight" style={{
+      display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
+      border: "1px solid var(--cyan)",
+    }}>
+      <img src={preview} alt="Tu foto" style={{
+        width: 44, height: 44, borderRadius: 8, objectFit: "cover", flexShrink: 0,
+      }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, color: "var(--text)" }}>Usarás la misma foto</div>
+        <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Elige un modo y se genera al tiro.</div>
+      </div>
+      <button className="btn btn-ghost btn-sm" onClick={() => setReusarFoto(false)}>
+        Usar otra
+      </button>
+    </div>
+  ) : null;
+
+  const consejoSelfie = (
+    <div className="chip" style={{
+      marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
+      lineHeight: 1.5, textAlign: "center", justifyContent: "center",
+    }}>
+      Consejo: usa una selfie con buena luz y tu rostro bien visible, así la IA te reconoce mejor.
+    </div>
+  );
 
   return (
     <div style={{
@@ -482,12 +544,7 @@ export default function Asistente({ evento }) {
               <h2 className="display" style={{ fontSize: 20 }}>Elige un modo</h2>
             </div>
 
-            <div className="chip" style={{
-              marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
-              lineHeight: 1.5, textAlign: "center", justifyContent: "center",
-            }}>
-              Consejo: usa una selfie con buena luz y tu rostro bien visible, así la IA te reconoce mejor.
-            </div>
+            {avisoMismaFoto || consejoSelfie}
 
             {esPremium && (
               <button
@@ -546,7 +603,7 @@ export default function Asistente({ evento }) {
             <button
               className="btn btn-ghost btn-block"
               style={{ marginTop: 20 }}
-              onClick={() => setStep("subir")}
+              onClick={reiniciar}
             >
               Volver
             </button>
@@ -562,12 +619,14 @@ export default function Asistente({ evento }) {
               <h2 className="display" style={{ fontSize: 20 }}>Divertidos</h2>
             </div>
 
-            <div className="chip" style={{
-              marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
-              lineHeight: 1.5, textAlign: "center", justifyContent: "center",
-            }}>
-              Consejo: salen mejor con la cara de frente y bien iluminada. Funcionan con una o varias personas.
-            </div>
+            {avisoMismaFoto || (
+              <div className="chip" style={{
+                marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
+                lineHeight: 1.5, textAlign: "center", justifyContent: "center",
+              }}>
+                Consejo: salen mejor con la cara de frente y bien iluminada. Funcionan con una o varias personas.
+              </div>
+            )}
 
             <div style={{
               display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
@@ -608,12 +667,7 @@ export default function Asistente({ evento }) {
               <h2 className="display" style={{ fontSize: 20 }}>Elige tu compañero de selfie</h2>
             </div>
 
-            <div className="chip" style={{
-              marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
-              lineHeight: 1.5, textAlign: "center", justifyContent: "center",
-            }}>
-              Consejo: usa una selfie con buena luz y tu rostro bien visible, así la IA te reconoce mejor.
-            </div>
+            {avisoMismaFoto || consejoSelfie}
 
             <div style={{
               display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
@@ -686,12 +740,7 @@ export default function Asistente({ evento }) {
               <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
             </div>
 
-            <div className="chip" style={{
-              marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
-              lineHeight: 1.5, textAlign: "center", justifyContent: "center",
-            }}>
-              Consejo: usa una selfie con buena luz y tu rostro bien visible, así la IA te reconoce mejor.
-            </div>
+            {consejoSelfie}
 
             <button
               className="btn btn-primary btn-block"
@@ -770,6 +819,7 @@ export default function Asistente({ evento }) {
                 </>
               )}
 
+              {/* ----- Resultado listo, ANTES de usar la foto: 4 botones ----- */}
               {!generandoIA && iaLista && !iaConfirmada && (
                 <>
                   <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>
@@ -779,45 +829,41 @@ export default function Asistente({ evento }) {
                     Intento {intentosIA} de {MAX_INTENTOS_IA}
                   </p>
                   {intentosIA >= MAX_INTENTOS_IA && (
-                    <p style={{ color: "var(--warn, #f5a623)", fontSize: 12.5, lineHeight: 1.5, marginBottom: 16 }}>
-                      Ya usaste tus {MAX_INTENTOS_IA} intentos. Elige esta foto o vuelve a "Subir foto" normal.
+                    <p style={{ color: "var(--warn, #f5a623)", fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
+                      Ya usaste tus {MAX_INTENTOS_IA} intentos con este modo. Puedes usar esta foto, probar otro modo u otra selfie.
                     </p>
                   )}
 
-                  <div style={{ display: "flex", gap: 10, marginTop: intentosIA >= MAX_INTENTOS_IA ? 0 : 16 }}>
-                    <button
-                      className="btn btn-ghost"
-                      style={{ flex: 1 }}
-                      onClick={intentarDeNuevo}
-                      disabled={intentosIA >= MAX_INTENTOS_IA || confirmandoIA}
-                    >
-                      Probar otra vez
-                    </button>
-                    <button
-                      className="btn btn-primary"
-                      style={{ flex: 1 }}
-                      onClick={confirmarFotoIA}
-                      disabled={confirmandoIA}
-                    >
-                      {confirmandoIA ? "Confirmando..." : "Usar esta foto"}
-                    </button>
-                  </div>
+                  <button
+                    className="btn btn-primary btn-block"
+                    style={{ marginTop: 14 }}
+                    onClick={confirmarFotoIA}
+                    disabled={confirmandoIA}
+                  >
+                    {confirmandoIA ? "Confirmando..." : "Usar esta foto"}
+                  </button>
 
-                  <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={cambiarDeFoto}>
-                    Cambiar de foto
+                  <button
+                    className="btn btn-ghost btn-block"
+                    style={{ marginTop: 10 }}
+                    onClick={intentarDeNuevo}
+                    disabled={intentosIA >= MAX_INTENTOS_IA || confirmandoIA}
+                  >
+                    Probar otra vez
                   </button>
 
                   <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={volverAlCatalogo}>
-                      Volver al catálogo
+                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otraSelfie} disabled={confirmandoIA}>
+                      Otra selfie
                     </button>
-                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reiniciar}>
-                      Ir al inicio
+                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otroModo} disabled={confirmandoIA}>
+                      Otro modo
                     </button>
                   </div>
                 </>
               )}
 
+              {/* ----- Foto ya usada: solo Volver ----- */}
               {!generandoIA && iaLista && iaConfirmada && (
                 <>
                   <div style={{
@@ -834,11 +880,12 @@ export default function Asistente({ evento }) {
                     {textoTrasConfirmar}
                   </p>
                   <button className="btn btn-ghost btn-block" onClick={reiniciar}>
-                    Probar otra foto
+                    Volver
                   </button>
                 </>
               )}
 
+              {/* ----- Error ----- */}
               {!generandoIA && errorIA && (
                 <>
                   <div className="chip chip-danger" style={{
@@ -853,20 +900,20 @@ export default function Asistente({ evento }) {
                       <button className="btn btn-primary btn-block" onClick={reintentarTrasError}>
                         Intentar de nuevo
                       </button>
-                      <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={cambiarDeFoto}>
-                        Cambiar de foto
-                      </button>
+                      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otraSelfie}>
+                          Otra selfie
+                        </button>
+                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otroModo}>
+                          Otro modo
+                        </button>
+                      </div>
                     </>
                   )}
 
-                  <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={volverAlCatalogo}>
-                      Volver al catálogo
-                    </button>
-                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={reiniciar}>
-                      Ir al inicio
-                    </button>
-                  </div>
+                  <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={reiniciar}>
+                    Volver al inicio
+                  </button>
                 </>
               )}
             </div>
@@ -941,7 +988,7 @@ export default function Asistente({ evento }) {
               <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, marginBottom: 22 }}>
                 {textoTrasConfirmar}
               </p>
-              <button className="btn btn-ghost btn-block" onClick={reiniciar}>Enviar otra foto</button>
+              <button className="btn btn-ghost btn-block" onClick={reiniciar}>Volver</button>
             </div>
             <Banner />
           </div>
