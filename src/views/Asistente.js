@@ -50,6 +50,10 @@ const ERRORES_NO_REINTENTABLES = ["límite", "plan premium", "no está disponibl
 const MENSAJE_ERROR_REINTENTABLE =
   "La IA no pudo generar esta foto esta vez. Toca \"Intentar de nuevo\" y se creará otra versión.";
 
+// Espera máxima de la generación: 90 consultas x 3 segundos = 270 segundos.
+// Algunas generaciones con GPT pueden tardar hasta ~220 segundos.
+const MAX_CONSULTAS = 90;
+
 const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
 
 const SUBMODOS_FUTBOL = [
@@ -59,6 +63,12 @@ const SUBMODOS_FUTBOL = [
   { id: "futbol_fan_4", nombre: "Argentina" },
 ];
 
+// Consulta en el momento si el evento tiene la aprobación automática encendida.
+const leerAutoAprobar = async (eventoId) => {
+  const { data } = await supabase.from("eventos").select("auto_aprobar").eq("id", eventoId).single();
+  return data?.auto_aprobar === true;
+};
+
 export default function Asistente({ evento }) {
   const [step, setStep] = useState("subir");
   const [preview, setPreview] = useState(null);
@@ -66,6 +76,7 @@ export default function Asistente({ evento }) {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
   const [autorizada, setAutorizada] = useState(true);
+  const [aprobadaDirecto, setAprobadaDirecto] = useState(false);
 
   const [generandoIA, setGenerandoIA] = useState(false);
   const [errorIA, setErrorIA] = useState("");
@@ -87,6 +98,10 @@ export default function Asistente({ evento }) {
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
   const esPremium = evento?.motor_ia === "premium";
+
+  const textoTrasConfirmar = aprobadaDirecto
+    ? "¡Tu foto ya está en la pantalla del evento!"
+    : "El operador la revisa y, si la aprueba, aparece en la pantalla.";
 
   // Vuelve al submenú Divertidos si el modo elegido es de ese bloque;
   // si no, al catálogo general.
@@ -113,12 +128,14 @@ export default function Asistente({ evento }) {
     setEnviando(true);
     setError("");
     try {
-      const { data: evActual } = await supabase.from("eventos").select("evento_cerrado").eq("id", evento.id).single();
+      const { data: evActual } = await supabase
+        .from("eventos").select("evento_cerrado, auto_aprobar").eq("id", evento.id).single();
       if (evActual?.evento_cerrado) {
         setError("Este evento ya cerró. No se pueden subir más fotos.");
         setEnviando(false);
         return;
       }
+      const directo = evActual?.auto_aprobar === true;
       const comprimida = await comprimirImagen(file);
       const filename = `${evento.id}_${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
@@ -129,10 +146,11 @@ export default function Asistente({ evento }) {
       const { error: dbErr } = await supabase.from("fotos").insert({
         evento_id: evento.id,
         url: urlData.publicUrl,
-        status: "pending",
+        status: directo ? "approved" : "pending",
         autorizada,
       });
       if (dbErr) throw dbErr;
+      setAprobadaDirecto(directo);
       setStep("enviada");
     } catch {
       setError("No se pudo enviar la foto. Revisa tu conexión e inténtalo de nuevo.");
@@ -178,7 +196,6 @@ export default function Asistente({ evento }) {
     reader.readAsDataURL(f);
   };
 
-  const MAX_CONSULTAS = 40;
   const seguirGenerandoRef = useRef(true);
 
   // Contador que avanza cada medio segundo mientras se genera:
@@ -307,11 +324,13 @@ export default function Asistente({ evento }) {
     if (!fotoIdIA) return;
     setConfirmandoIA(true);
     try {
+      const directo = await leerAutoAprobar(evento.id);
       const { error: errUpdate } = await supabase
         .from("fotos")
-        .update({ status: "pending" })
+        .update({ status: directo ? "approved" : "pending" })
         .eq("id", fotoIdIA);
       if (errUpdate) throw errUpdate;
+      setAprobadaDirecto(directo);
       setIaConfirmada(true);
     } catch {
       setErrorReintentable(false);
@@ -324,7 +343,7 @@ export default function Asistente({ evento }) {
   const reiniciar = () => {
     seguirGenerandoRef.current = false;
     setStep("subir"); setPreview(null); setFile(null);
-    setAutorizada(true); setError("");
+    setAutorizada(true); setError(""); setAprobadaDirecto(false);
     setGenerandoIA(false); setErrorIA(""); setErrorReintentable(true); setIaLista(false);
     setUrlResultadoIA(null); setFotoIdIA(null); setIntentosIA(0);
     setConfirmandoIA(false); setIaConfirmada(false); setModoSeleccionado(null);
@@ -746,7 +765,7 @@ export default function Asistente({ evento }) {
                     {mensajeGenerando}
                   </p>
                   <p style={{ color: "var(--text-dim)", fontSize: 12.5, lineHeight: 1.6 }}>
-                    Puede tardar hasta 2 minutos. No cierres esta pantalla.
+                    Puede tardar hasta 4 minutos. No cierres esta pantalla.
                   </p>
                 </>
               )}
@@ -812,7 +831,7 @@ export default function Asistente({ evento }) {
                     ¡Listo!
                   </h2>
                   <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, marginBottom: 22 }}>
-                    El operador la revisa y, si la aprueba, aparece en la pantalla.
+                    {textoTrasConfirmar}
                   </p>
                   <button className="btn btn-ghost btn-block" onClick={reiniciar}>
                     Probar otra foto
@@ -830,14 +849,15 @@ export default function Asistente({ evento }) {
                   </div>
 
                   {errorReintentable && (
-                    <button className="btn btn-primary btn-block" onClick={reintentarTrasError}>
-                      Intentar de nuevo
-                    </button>
+                    <>
+                      <button className="btn btn-primary btn-block" onClick={reintentarTrasError}>
+                        Intentar de nuevo
+                      </button>
+                      <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={cambiarDeFoto}>
+                        Cambiar de foto
+                      </button>
+                    </>
                   )}
-
-                  <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={cambiarDeFoto}>
-                    Cambiar de foto
-                  </button>
 
                   <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={volverAlCatalogo}>
@@ -919,7 +939,7 @@ export default function Asistente({ evento }) {
               </div>
               <h2 className="display" style={{ fontSize: 20, marginBottom: 10 }}>Foto enviada</h2>
               <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, marginBottom: 22 }}>
-                El operador la revisa y, si la aprueba, aparece en la pantalla.
+                {textoTrasConfirmar}
               </p>
               <button className="btn btn-ghost btn-block" onClick={reiniciar}>Enviar otra foto</button>
             </div>
