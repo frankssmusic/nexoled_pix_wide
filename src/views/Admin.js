@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { supabase } from "../supabase";
-import { ADMIN_PASSWORD, generarSlug, sufijoCorto, urlsDe } from "../lib";
+import { generarSlug, sufijoCorto, urlsDe } from "../lib";
 import { cargarJSZip, cargarXLSX } from "../cdn";
 import Icon from "../components/Icons";
 import { Logo, Toast, Stat, Vacio, Modal } from "../components/UI";
@@ -129,7 +129,10 @@ async function borrarOriginalesDeEvento(eventoId) {
 
 export default function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [verificandoSesion, setVerificandoSesion] = useState(true);
+  const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  const [entrando, setEntrando] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
 
@@ -156,6 +159,29 @@ export default function Admin() {
   const [verOps, setVerOps] = useState(false);
   const [opsSel, setOpsSel] = useState([]);
   const [dolar, setDolar] = useState({ valor: CLP_POR_USD_RESPALDO, fecha: null, oficial: false });
+
+  /* ---------- Sesión de Supabase Auth ---------- */
+  useEffect(() => {
+    let activo = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!activo) return;
+      setLoggedIn(!!data?.session);
+      setVerificandoSesion(false);
+    });
+    const { data: escucha } = supabase.auth.onAuthStateChange((_evento, session) => {
+      setLoggedIn(!!session);
+    });
+    return () => {
+      activo = false;
+      escucha?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  const cerrarSesion = async () => {
+    await supabase.auth.signOut();
+    setLoggedIn(false);
+    setPass("");
+  };
 
   /* ---------- Dólar del día (mindicador.cl, dólar observado Banco Central) ---------- */
   useEffect(() => {
@@ -516,11 +542,31 @@ export default function Admin() {
     } catch { setToast("No se pudo exportar"); }
   };
 
-  /* ---------- LOGIN ---------- */
+  /* ---------- VERIFICANDO SESIÓN ---------- */
+  if (verificandoSesion) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ color: "var(--text-dim)", fontSize: 14 }}>Cargando...</div>
+      </div>
+    );
+  }
+
+  /* ---------- LOGIN (Supabase Auth) ---------- */
   if (!loggedIn) {
-    const intentar = () => {
-      if (pass === ADMIN_PASSWORD) { setLoggedIn(true); setError(""); }
-      else setError("Clave incorrecta");
+    const intentar = async () => {
+      if (!email.trim() || !pass) { setError("Escribe tu correo y tu clave"); return; }
+      setEntrando(true);
+      setError("");
+      const { error: errAuth } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: pass,
+      });
+      setEntrando(false);
+      if (errAuth) {
+        setError("Correo o clave incorrectos");
+        return;
+      }
+      setPass("");
     };
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -530,12 +576,18 @@ export default function Admin() {
               <Logo size={22} />
               <div className="eyebrow" style={{ marginTop: 10 }}>Panel de administración</div>
             </div>
-            <input className="input" type="password" placeholder="Clave de administrador"
+            <input className="input" type="email" placeholder="Correo"
+              autoComplete="username"
+              value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className="input" type="password" placeholder="Clave"
+              autoComplete="current-password"
+              style={{ marginTop: 10 }}
               value={pass} onChange={(e) => setPass(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && intentar()} />
             {error && <div style={{ color: "var(--danger)", fontSize: 13, marginTop: 10 }}>{error}</div>}
-            <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} onClick={intentar}>
-              Entrar
+            <button className="btn btn-primary btn-block" style={{ marginTop: 14 }}
+              onClick={intentar} disabled={entrando}>
+              {entrando ? "Entrando..." : "Entrar"}
             </button>
           </div>
         </div>
@@ -590,7 +642,7 @@ export default function Admin() {
               : `Dólar referencial: ${clp(dolar.valor)} (no se pudo obtener el del día)`}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn btn-ghost btn-sm" onClick={cargarEventos} title="Actualizar estado">
             <Icon.Refresh size={16} /> Actualizar
           </button>
@@ -599,6 +651,9 @@ export default function Admin() {
               <Icon.Plus size={16} /> Nuevo evento
             </button>
           )}
+          <button className="btn btn-ghost btn-sm" onClick={cerrarSesion} title="Cerrar sesión">
+            <Icon.Exit size={15} /> Salir
+          </button>
         </div>
       </header>
 

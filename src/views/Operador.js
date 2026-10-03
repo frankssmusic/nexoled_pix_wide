@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabase";
-import { ADMIN_PASSWORD, validarRut, OP_TERMS } from "../lib";
+import { validarRut, OP_TERMS } from "../lib";
 import { cargarJSZip } from "../cdn";
 import Icon from "../components/Icons";
 import { Logo, Toast, Stat, Vacio, Modal } from "../components/UI";
@@ -44,6 +44,19 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
     cuota: evento?.cuota_ia ?? null,
     ia: evento?.ia_habilitada !== false,
   });
+
+  /* ---------- Admin con sesión abierta: entra directo ---------- */
+  useEffect(() => {
+    if (!evento || loggedIn || evento.evento_cerrado) return undefined;
+    let activo = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!activo || !data?.session) return;
+      localStorage.setItem(authKey(evento.id), JSON.stringify({ sv: evento.session_version || 1 }));
+      setLoggedIn(true);
+      setPaso("panel");
+    });
+    return () => { activo = false; };
+  }, [evento, loggedIn]);
 
   /* ---------- Contador de IA: se lee directo de la base cada 15 s ---------- */
   const eventoId = evento?.id;
@@ -175,10 +188,7 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
       setError("Este evento está cerrado. Contacta al administrador.");
       return;
     }
-    if (pass === ADMIN_PASSWORD) {
-      localStorage.setItem(authKey(evento.id), JSON.stringify({ sv: evento.session_version || 1 }));
-      setError(""); setLoggedIn(true); setPaso("panel");
-    } else if (pass === evento.clave_operador) {
+    if (pass === evento.clave_operador) {
       setError(""); setPaso("terminos");
     } else {
       setError("Clave incorrecta");

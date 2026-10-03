@@ -2,8 +2,6 @@
    UTILIDADES COMPARTIDAS — NexoPix Wide
    ========================================================== */
 
-export const ADMIN_PASSWORD = "admin9999";
-
 /* ----------------------------------------------------------
    RUTEO POR SLUG
    /                        -> aterrizaje (sin evento)
