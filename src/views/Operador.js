@@ -1,4 +1,4 @@
-    import { useState } from "react";
+import { useState } from "react";
 import { supabase } from "../supabase";
 import { ADMIN_PASSWORD, validarRut, OP_TERMS } from "../lib";
 import { cargarJSZip } from "../cdn";
@@ -32,11 +32,13 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
   const [msgEdit, setMsgEdit] = useState(evento?.mensaje_subida || "Subir foto");
   const [msgGuardado, setMsgGuardado] = useState(true);
   const [verTerminos, setVerTerminos] = useState(false);
+  const [cambiandoAuto, setCambiandoAuto] = useState(false);
 
   if (!evento) {
     return <Vacio titulo="Evento no encontrado" detalle="Revisa el enlace del panel de operador." />;
   }
 
+  const autoAprobar = evento.auto_aprobar === true;
   const pendientes = fotos.filter((f) => f.status === "pending");
   const visibles = fotos.filter((f) => f.status === filtro);
 
@@ -61,6 +63,30 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
     await cambiarEstado(seleccion, "rejected");
     setToast(`${seleccion.length} foto(s) rechazadas`);
     setSeleccion([]);
+  };
+
+  /* Encender / apagar la aprobación automática */
+  const alternarAutoAprobar = async () => {
+    const nuevoValor = !autoAprobar;
+    setCambiandoAuto(true);
+    const { error: err } = await supabase
+      .from("eventos").update({ auto_aprobar: nuevoValor }).eq("id", evento.id);
+    setCambiandoAuto(false);
+    if (err) { setToast("No se pudo cambiar la aprobación automática"); return; }
+    onUpdateEvento({ ...evento, auto_aprobar: nuevoValor });
+
+    if (nuevoValor && pendientes.length > 0) {
+      const aprobarTambien = window.confirm(
+        `Hay ${pendientes.length} foto(s) en espera. ¿Quieres aprobarlas también ahora?`
+      );
+      if (aprobarTambien) {
+        await cambiarEstado(pendientes.map((f) => f.id), "approved");
+        setSeleccion([]);
+        setToast(`Aprobación automática encendida. ${pendientes.length} foto(s) aprobadas`);
+        return;
+      }
+    }
+    setToast(nuevoValor ? "Aprobación automática encendida" : "Aprobación automática apagada");
   };
 
   const guardarMensaje = async () => {
@@ -296,6 +322,29 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
         <Stat label="Rechazadas" value={fotos.filter((f) => f.status === "rejected").length} color="var(--danger)" />
       </div>
 
+      {/* --- Aprobación automática --- */}
+      <div className="card card-tight" style={{
+        marginBottom: 12,
+        border: autoAprobar ? "1px solid var(--ok)" : "1px solid var(--border)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, color: "var(--text)" }}>Aprobar automáticamente</div>
+            <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 3, lineHeight: 1.5 }}>
+              {autoAprobar
+                ? "Encendido: las fotos nuevas pasan directo a la pantalla. Puedes retirarlas desde Aprobadas."
+                : "Apagado: revisas cada foto antes de que aparezca en la pantalla."}
+            </div>
+          </div>
+          <Interruptor
+            activo={autoAprobar}
+            onToggle={alternarAutoAprobar}
+            deshabilitado={cambiandoAuto}
+            etiqueta="Aprobar automáticamente"
+          />
+        </div>
+      </div>
+
       <div className="card card-tight" style={{ marginBottom: 12 }}>
         <label className="label">Mensaje del botón de subida</label>
         <div style={{ display: "flex", gap: 8 }}>
@@ -312,7 +361,7 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
           <button className="btn btn-primary btn-block" onClick={descargar}
             disabled={descargando || fotos.filter((f) => f.status === "approved").length === 0}>
             <Icon.Download size={16} />
-            {descargando ? "Preparando…" : "Descargar fotos aprobadas"}
+            {descargando ? "Preparando..." : "Descargar fotos aprobadas"}
           </button>
         </div>
       )}
@@ -409,7 +458,13 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
                       </button>
                     </div>
                   )}
-                  {(filtro === "approved" || filtro === "rejected") && (
+                  {filtro === "approved" && (
+                    <button className="btn btn-danger btn-sm btn-block" style={{ marginTop: 10 }}
+                      onClick={(e) => { e.stopPropagation(); cambiarEstado([foto.id], "rejected"); setToast("Foto retirada de la pantalla"); }}>
+                      <Icon.X size={14} /> Retirar de pantalla
+                    </button>
+                  )}
+                  {filtro === "rejected" && (
                     <button className="btn btn-ghost btn-sm btn-block" style={{ marginTop: 10 }}
                       onClick={(e) => { e.stopPropagation(); cambiarEstado([foto.id], "pending"); setToast("Enviada a revisión"); }}>
                       <Icon.Undo size={14} /> Revertir
@@ -422,6 +477,32 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
         </div>
       )}
     </div>
+  );
+}
+
+function Interruptor({ activo, onToggle, deshabilitado, etiqueta }) {
+  return (
+    <button
+      onClick={onToggle}
+      disabled={deshabilitado}
+      role="switch"
+      aria-checked={activo}
+      aria-label={etiqueta}
+      style={{
+        width: 44, height: 25, borderRadius: 100, flexShrink: 0,
+        cursor: deshabilitado ? "wait" : "pointer",
+        border: "none", padding: 0, position: "relative",
+        background: activo ? "var(--ok)" : "var(--border-strong)",
+        opacity: deshabilitado ? 0.6 : 1,
+        transition: "background 0.18s ease",
+      }}
+    >
+      <span style={{
+        position: "absolute", top: 3, left: activo ? 22 : 3,
+        width: 19, height: 19, borderRadius: "50%", background: "#fff",
+        transition: "left 0.18s ease",
+      }} />
+    </button>
   );
 }
 
