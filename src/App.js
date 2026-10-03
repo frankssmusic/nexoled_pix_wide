@@ -8,6 +8,25 @@ import Admin from "./views/Admin";
 import { Logo, Spinner, Vacio } from "./components/UI";
 import Icon from "./components/Icons";
 
+// Columnas públicas del evento. NO incluye clave_operador: esa solo la ve
+// el admin y la valida el servidor (/api/operador).
+const COLUMNAS_EVENTO_PUBLICAS = [
+  "id",
+  "nombre",
+  "slug",
+  "activo",
+  "evento_cerrado",
+  "descarga_habilitada",
+  "mensaje_subida",
+  "session_version",
+  "ia_habilitada",
+  "motor_ia",
+  "auto_aprobar",
+  "cuota_ia",
+  "ia_usadas",
+  "created_at",
+].join(", ");
+
 export default function App() {
   const [{ view, slug }] = useState(getRoute);
   const [evento, setEvento] = useState(null);
@@ -32,7 +51,7 @@ export default function App() {
 
     const init = async () => {
       const { data: ev } = await supabase
-        .from("eventos").select("*").eq("slug", slug).maybeSingle();
+        .from("eventos").select(COLUMNAS_EVENTO_PUBLICAS).eq("slug", slug).maybeSingle();
       if (ev) {
         setEvento(ev);
         eventoIdRef.current = ev.id;
@@ -87,10 +106,12 @@ export default function App() {
           <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.65, marginBottom: 24 }}>
             Cada evento tiene su propio código QR. Búscalo en la pantalla LED o pregúntale al organizador.
           </p>
-          <a href="https://nexoled.cl" target="_blank" rel="noreferrer"
-            className="btn btn-ghost" style={{ textDecoration: "none" }}>
+          <button
+            className="btn btn-ghost"
+            onClick={() => window.open("https://nexoled.cl", "_blank", "noopener,noreferrer")}
+          >
             Conocer NexoLED
-          </a>
+          </button>
         </div>
       </div>
     );
