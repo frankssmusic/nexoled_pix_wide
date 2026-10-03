@@ -3,6 +3,7 @@ import { supabase } from "../supabase";
 import { comprimirImagen } from "../lib";
 import Icon from "../components/Icons";
 import { Vacio } from "../components/UI";
+import MiniJuego from "../components/MiniJuego";
 
 const MODOS_IA = [
   { id: "game_of_thrones", nombre: "Game of Thrones" },
@@ -70,6 +71,7 @@ const CONSEJOS_INSTRUCTIVO = [
   { emoji: "\u{1F4F1}", fuerte: "No cierres la app", resto: " ni bloquees el celular mientras se genera", color: "224,64,251" },
 ];
 const EMOJI_BRILLO = "\u{2728}";
+const EMOJI_CONTROL = "\u{1F3AE}";
 
 // Consulta en el momento si el evento tiene la aprobación automática encendida.
 const leerAutoAprobar = async (eventoId) => {
@@ -101,6 +103,7 @@ export default function Asistente({ evento }) {
   const [descargandoFoto, setDescargandoFoto] = useState(false);
   const [reusarFoto, setReusarFoto] = useState(false);
   const [mostrarInstructivo, setMostrarInstructivo] = useState(false);
+  const [jugando, setJugando] = useState(false);
   const MAX_INTENTOS_IA = 2;
 
   const fileRef = useRef();
@@ -115,6 +118,11 @@ export default function Asistente({ evento }) {
   const mensaje = evento?.mensaje_subida || "Subir foto";
   const esPremium = evento?.motor_ia === "premium";
   const claveInstructivo = evento ? `funfoto_instructivo_${evento.id}` : null;
+
+  // Estado de la foto que se le informa al minijuego.
+  let estadoFoto = "generando";
+  if (!generandoIA && errorIA) estadoFoto = "error";
+  else if (!generandoIA && iaLista) estadoFoto = "lista";
 
   const textoTrasConfirmar = aprobadaDirecto
     ? "¡Tu foto ya está en la pantalla del evento!"
@@ -525,6 +533,7 @@ export default function Asistente({ evento }) {
 
   const reiniciar = () => {
     seguirGenerandoRef.current = false;
+    setJugando(false);
     setStep("subir"); setPreview(null); setFile(null);
     setAutorizada(true); setError(""); setAprobadaDirecto(false); setReusarFoto(false);
     setGenerandoIA(false); setErrorIA(""); setErrorReintentable(true); setIaLista(false);
@@ -594,6 +603,15 @@ export default function Asistente({ evento }) {
       alignItems: "center", justifyContent: "center", padding: "20px 16px 40px",
     }}>
       {mostrarInstructivo && <Instructivo onAceptar={cerrarInstructivo} />}
+
+      {jugando && (
+        <MiniJuego
+          eventoId={evento.id}
+          estadoFoto={estadoFoto}
+          onVerFoto={() => setJugando(false)}
+          onCerrar={() => setJugando(false)}
+        />
+      )}
 
       <div style={{ width: "100%", maxWidth: 420 }}>
 
@@ -857,6 +875,21 @@ export default function Asistente({ evento }) {
                   <p style={{ color: "var(--text-dim)", fontSize: 12.5, lineHeight: 1.6 }}>
                     Puede tardar hasta 4 minutos. No cierres esta pantalla, te avisamos con un sonido cuando esté lista.
                   </p>
+
+                  <button
+                    onClick={() => { prepararAudio(); setJugando(true); }}
+                    style={{
+                      width: "100%", marginTop: 18, padding: "14px 16px", borderRadius: 14,
+                      border: "1px solid rgba(224,64,251,0.55)", cursor: "pointer",
+                      fontSize: 15, fontWeight: 700, fontFamily: "var(--font-body)", color: "#fff",
+                      background: "linear-gradient(135deg, rgba(224,64,251,0.22), rgba(0,229,255,0.14))",
+                      boxShadow: "0 0 26px rgba(224,64,251,0.2)",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                    }}
+                  >
+                    <span style={{ fontSize: 20 }}>{EMOJI_CONTROL}</span>
+                    Jugar mientras esperas
+                  </button>
                 </>
               )}
 
