@@ -14,21 +14,32 @@ const TOPE_SEGURIDAD_SIN_CUOTA = 30;
 // Cada cuánto se actualiza el contador de IA (milisegundos).
 const INTERVALO_CONTADOR = 15000;
 
+const MENSAJE_CLAVE_CAMBIO = "La clave del evento cambió o el evento se cerró. Ingresa de nuevo.";
+
+/* Lee la sesión guardada del operador para este evento. */
+const leerGuardado = (eventoId) => {
+  if (!eventoId) return null;
+  try {
+    return JSON.parse(localStorage.getItem(authKey(eventoId)) || "null");
+  } catch {
+    return null;
+  }
+};
+
 export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento }) {
   const leerSesion = () => {
     if (!evento) return false;
-    const guardado = localStorage.getItem(authKey(evento.id));
-    if (!guardado) return false;
-    try {
-      const { sv } = JSON.parse(guardado);
-      return sv === (evento.session_version || 1);
-    } catch { return false; }
+    const g = leerGuardado(evento.id);
+    if (!g) return false;
+    return g.sv === (evento.session_version || 1) && (!!g.clave || g.admin === true);
   };
 
   const [loggedIn, setLoggedIn] = useState(leerSesion);
   const [paso, setPaso] = useState(leerSesion() ? "panel" : "login");
+  const [clave, setClave] = useState(() => leerGuardado(evento?.id)?.clave || "");
   const [pass, setPass] = useState("");
   const [error, setError] = useState("");
+  const [entrando, setEntrando] = useState(false);
   const [opNombre, setOpNombre] = useState("");
   const [opRut, setOpRut] = useState("");
   const [seleccion, setSeleccion] = useState([]);
@@ -51,7 +62,9 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
     let activo = true;
     supabase.auth.getSession().then(({ data }) => {
       if (!activo || !data?.session) return;
-      localStorage.setItem(authKey(evento.id), JSON.stringify({ sv: evento.session_version || 1 }));
+      localStorage.setItem(authKey(evento.id), JSON.stringify({
+        sv: evento.session_version || 1, admin: true,
+      }));
       setLoggedIn(true);
       setPaso("panel");
     });
@@ -88,6 +101,47 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
   const pendientes = fotos.filter((f) => f.status === "pending");
   const visibles = fotos.filter((f) => f.status === filtro);
 
+  /* Saca al operador si el servidor dice que la clave ya no sirve. */
+  const forzarSalida = () => {
+    localStorage.removeItem(authKey(evento.id));
+    setLoggedIn(false);
+    setPaso("login");
+    setPass("");
+    setClave("");
+    setError(MENSAJE_CLAVE_CAMBIO);
+  };
+
+  /* Llama a /api/operador con la clave del evento (o la sesión de admin). */
+  const llamarApi = async (accion, datos = {}) => {
+    const headers = { "Content-Type": "application/json" };
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (token) headers.Authorization = `Bearer ${token}`;
+    } catch {
+      // Sin sesión de admin: se usa la clave del evento.
+    }
+    try {
+      const resp = await fetch("/api/operador", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ accion, eventoId: evento.id, clave, ...datos }),
+      });
+      let json = {};
+      try {
+        json = await resp.json();
+      } catch {
+        json = {};
+      }
+      if ((resp.status === 401 || resp.status === 403) && accion !== "login") {
+        forzarSalida();
+      }
+      return { ok: resp.ok, ...json };
+    } catch {
+      return { ok: false, error: "Sin conexión. Revisa tu internet e intenta de nuevo." };
+    }
+  };
+
   const refrescar = () => {
     onRefreshFotos();
     cargarContador();
@@ -101,29 +155,34 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
   };
 
   const cambiarEstado = async (ids, status) => {
-    await supabase.from("fotos").update({ status }).in("id", ids);
+    const r = await llamarApi("estado", { ids, status });
+    if (!r.ok) setToast(r.error || "No se pudo actualizar");
     onRefreshFotos();
+    return r.ok;
   };
 
   const aprobarLote = async () => {
-    await cambiarEstado(seleccion, "approved");
-    setToast(`${seleccion.length} foto(s) aprobadas`);
+    const cantidad = seleccion.length;
+    if (await cambiarEstado(seleccion, "approved")) setToast(`${cantidad} foto(s) aprobadas`);
     setSeleccion([]);
   };
   const rechazarLote = async () => {
-    await cambiarEstado(seleccion, "rejected");
-    setToast(`${seleccion.length} foto(s) rechazadas`);
+    const cantidad = seleccion.length;
+    if (await cambiarEstado(seleccion, "rejected")) setToast(`${cantidad} foto(s) rechazadas`);
     setSeleccion([]);
+  };
+
+  const cambiarUna = async (id, status, mensaje) => {
+    if (await cambiarEstado([id], status)) setToast(mensaje);
   };
 
   /* Encender / apagar la aprobación automática */
   const alternarAutoAprobar = async () => {
     const nuevoValor = !autoAprobar;
     setCambiandoAuto(true);
-    const { error: err } = await supabase
-      .from("eventos").update({ auto_aprobar: nuevoValor }).eq("id", evento.id);
+    const r = await llamarApi("autoAprobar", { valor: nuevoValor });
     setCambiandoAuto(false);
-    if (err) { setToast("No se pudo cambiar la aprobación automática"); return; }
+    if (!r.ok) { setToast(r.error || "No se pudo cambiar la aprobación automática"); return; }
     onUpdateEvento({ ...evento, auto_aprobar: nuevoValor });
 
     if (nuevoValor && pendientes.length > 0) {
@@ -131,9 +190,10 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
         `Hay ${pendientes.length} foto(s) en espera. ¿Quieres aprobarlas también ahora?`
       );
       if (aprobarTambien) {
+        const cantidad = pendientes.length;
         await cambiarEstado(pendientes.map((f) => f.id), "approved");
         setSeleccion([]);
-        setToast(`Aprobación automática encendida. ${pendientes.length} foto(s) aprobadas`);
+        setToast(`Aprobación automática encendida. ${cantidad} foto(s) aprobadas`);
         return;
       }
     }
@@ -141,12 +201,13 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
   };
 
   const guardarMensaje = async () => {
-    const { error: err } = await supabase
-      .from("eventos").update({ mensaje_subida: msgEdit }).eq("id", evento.id);
-    if (err) { setToast("No se pudo guardar el mensaje"); return; }
+    const r = await llamarApi("mensaje", { texto: msgEdit });
+    if (!r.ok) { setToast(r.error || "No se pudo guardar el mensaje"); return; }
+    const texto = r.texto || msgEdit;
+    setMsgEdit(texto);
     setToast("Mensaje actualizado");
     setMsgGuardado(true);
-    onUpdateEvento({ ...evento, mensaje_subida: msgEdit });
+    onUpdateEvento({ ...evento, mensaje_subida: texto });
   };
 
   const descargar = async () => {
@@ -183,33 +244,39 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
     }
   };
 
-  const entrar = () => {
-    if (evento.evento_cerrado) {
-      setError("Este evento está cerrado. Contacta al administrador.");
+  const entrar = async () => {
+    if (!pass.trim()) { setError("Escribe la clave del evento"); return; }
+    setEntrando(true);
+    setError("");
+    const r = await llamarApi("login", { clave: pass.trim() });
+    setEntrando(false);
+    if (!r.ok) {
+      setError(r.error || "Clave incorrecta");
       return;
     }
-    if (pass === evento.clave_operador) {
-      setError(""); setPaso("terminos");
-    } else {
-      setError("Clave incorrecta");
-    }
+    setClave(pass.trim());
+    setPaso("terminos");
   };
 
   const registrar = async () => {
     if (!opNombre.trim() || !opRut.trim()) { setError("Completa nombre y RUT"); return; }
     const check = validarRut(opRut);
     if (!check.ok) { setError(check.msg); return; }
-    const { error: err } = await supabase.from("operadores").insert({
-      evento_id: evento.id, nombre: opNombre.trim(), rut: check.clean,
-    });
-    if (err) { setError("No se pudo registrar. Inténtalo de nuevo."); return; }
-    localStorage.setItem(authKey(evento.id), JSON.stringify({ sv: evento.session_version || 1 }));
-    setLoggedIn(true); setPaso("panel");
+    setEntrando(true);
+    setError("");
+    const r = await llamarApi("registrar", { nombre: opNombre.trim(), rut: check.clean });
+    setEntrando(false);
+    if (!r.ok) { setError(r.error || "No se pudo registrar. Inténtalo de nuevo."); return; }
+    localStorage.setItem(authKey(evento.id), JSON.stringify({
+      sv: r.sessionVersion || evento.session_version || 1, clave,
+    }));
+    setLoggedIn(true);
+    setPaso("panel");
   };
 
   const salir = () => {
     localStorage.removeItem(authKey(evento.id));
-    setLoggedIn(false); setPaso("login"); setPass("");
+    setLoggedIn(false); setPaso("login"); setPass(""); setClave(""); setError("");
   };
 
   /* ---------- LOGIN ---------- */
@@ -234,8 +301,9 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
             onKeyDown={(e) => e.key === "Enter" && entrar()}
           />
           {error && <ErrorMsg>{error}</ErrorMsg>}
-          <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} onClick={entrar}>
-            Entrar
+          <button className="btn btn-primary btn-block" style={{ marginTop: 14 }}
+            onClick={entrar} disabled={entrando}>
+            {entrando ? "Verificando..." : "Entrar"}
           </button>
         </div>
       </Centro>
@@ -325,8 +393,9 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
             </div>
           </div>
           {error && <ErrorMsg>{error}</ErrorMsg>}
-          <button className="btn btn-primary btn-block" style={{ marginTop: 16 }} onClick={registrar}>
-            Registrarme y entrar
+          <button className="btn btn-primary btn-block" style={{ marginTop: 16 }}
+            onClick={registrar} disabled={entrando}>
+            {entrando ? "Registrando..." : "Registrarme y entrar"}
           </button>
           <button className="btn btn-ghost btn-block" style={{ marginTop: 8 }}
             onClick={() => { setPaso("login"); setPass(""); setError(""); }}>
@@ -403,7 +472,7 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
       <div className="card card-tight" style={{ marginBottom: 12 }}>
         <label className="label">Mensaje del botón de subida</label>
         <div style={{ display: "flex", gap: 8 }}>
-          <input className="input" value={msgEdit} placeholder="Subir foto"
+          <input className="input" value={msgEdit} placeholder="Subir foto" maxLength={60}
             onChange={(e) => { setMsgEdit(e.target.value); setMsgGuardado(false); }} />
           <button className="btn btn-primary btn-sm" onClick={guardarMensaje} disabled={msgGuardado}>
             Guardar
@@ -504,24 +573,24 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
                   {filtro === "pending" && !sel && (
                     <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                       <button className="btn btn-ok btn-sm" style={{ flex: 1, padding: "8px" }}
-                        onClick={(e) => { e.stopPropagation(); cambiarEstado([foto.id], "approved"); setToast("Foto aprobada"); }}>
+                        onClick={(e) => { e.stopPropagation(); cambiarUna(foto.id, "approved", "Foto aprobada"); }}>
                         <Icon.Check size={14} />
                       </button>
                       <button className="btn btn-danger btn-sm" style={{ flex: 1, padding: "8px" }}
-                        onClick={(e) => { e.stopPropagation(); cambiarEstado([foto.id], "rejected"); setToast("Foto rechazada"); }}>
+                        onClick={(e) => { e.stopPropagation(); cambiarUna(foto.id, "rejected", "Foto rechazada"); }}>
                         <Icon.X size={14} />
                       </button>
                     </div>
                   )}
                   {filtro === "approved" && (
                     <button className="btn btn-danger btn-sm btn-block" style={{ marginTop: 10 }}
-                      onClick={(e) => { e.stopPropagation(); cambiarEstado([foto.id], "rejected"); setToast("Foto retirada de la pantalla"); }}>
+                      onClick={(e) => { e.stopPropagation(); cambiarUna(foto.id, "rejected", "Foto retirada de la pantalla"); }}>
                       <Icon.X size={14} /> Retirar de pantalla
                     </button>
                   )}
                   {filtro === "rejected" && (
                     <button className="btn btn-ghost btn-sm btn-block" style={{ marginTop: 10 }}
-                      onClick={(e) => { e.stopPropagation(); cambiarEstado([foto.id], "pending"); setToast("Enviada a revisión"); }}>
+                      onClick={(e) => { e.stopPropagation(); cambiarUna(foto.id, "pending", "Enviada a revisión"); }}>
                       <Icon.Undo size={14} /> Revertir
                     </button>
                   )}
