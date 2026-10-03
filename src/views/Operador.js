@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabase";
 import { ADMIN_PASSWORD, validarRut, OP_TERMS } from "../lib";
 import { cargarJSZip } from "../cdn";
@@ -7,6 +7,12 @@ import { Logo, Toast, Stat, Vacio, Modal } from "../components/UI";
 
 /* Clave de sesión por evento: cada evento guarda su propia sesión */
 const authKey = (eventoId) => `op_auth_${eventoId}`;
+
+// Tope de seguridad para eventos sin cuota (debe coincidir con la función SQL).
+const TOPE_SEGURIDAD_SIN_CUOTA = 30;
+
+// Cada cuánto se actualiza el contador de IA (milisegundos).
+const INTERVALO_CONTADOR = 15000;
 
 export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento }) {
   const leerSesion = () => {
@@ -33,6 +39,33 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
   const [msgGuardado, setMsgGuardado] = useState(true);
   const [verTerminos, setVerTerminos] = useState(false);
   const [cambiandoAuto, setCambiandoAuto] = useState(false);
+  const [contador, setContador] = useState({
+    usadas: evento?.ia_usadas || 0,
+    cuota: evento?.cuota_ia ?? null,
+    ia: evento?.ia_habilitada !== false,
+  });
+
+  /* ---------- Contador de IA: se lee directo de la base cada 15 s ---------- */
+  const eventoId = evento?.id;
+  const cargarContador = useCallback(async () => {
+    if (!eventoId) return;
+    const { data } = await supabase
+      .from("eventos").select("ia_usadas, cuota_ia, ia_habilitada").eq("id", eventoId).single();
+    if (data) {
+      setContador({
+        usadas: data.ia_usadas || 0,
+        cuota: data.cuota_ia,
+        ia: data.ia_habilitada !== false,
+      });
+    }
+  }, [eventoId]);
+
+  useEffect(() => {
+    if (!loggedIn) return;
+    cargarContador();
+    const t = setInterval(cargarContador, INTERVALO_CONTADOR);
+    return () => clearInterval(t);
+  }, [loggedIn, cargarContador]);
 
   if (!evento) {
     return <Vacio titulo="Evento no encontrado" detalle="Revisa el enlace del panel de operador." />;
@@ -41,6 +74,11 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
   const autoAprobar = evento.auto_aprobar === true;
   const pendientes = fotos.filter((f) => f.status === "pending");
   const visibles = fotos.filter((f) => f.status === filtro);
+
+  const refrescar = () => {
+    onRefreshFotos();
+    cargarContador();
+  };
 
   const alternar = (id) =>
     setSeleccion((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -307,7 +345,7 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
             <span className={`dot ${evento.evento_cerrado ? "dot-closed" : "dot-live"}`} />
             {evento.evento_cerrado ? "Cerrado" : "En vivo"}
           </span>
-          <button className="btn btn-ghost btn-sm" onClick={onRefreshFotos} aria-label="Actualizar">
+          <button className="btn btn-ghost btn-sm" onClick={refrescar} aria-label="Actualizar">
             <Icon.Refresh size={15} />
           </button>
           <button className="btn btn-ghost btn-sm" onClick={salir}>
@@ -321,6 +359,13 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
         <Stat label="Aprobadas" value={fotos.filter((f) => f.status === "approved").length} color="var(--ok)" />
         <Stat label="Rechazadas" value={fotos.filter((f) => f.status === "rejected").length} color="var(--danger)" />
       </div>
+
+      {/* --- Contador de IA usadas --- */}
+      {contador.ia && (
+        <div className="card card-tight" style={{ marginBottom: 12 }}>
+          <ContadorIA usadas={contador.usadas} cuota={contador.cuota} />
+        </div>
+      )}
 
       {/* --- Aprobación automática --- */}
       <div className="card card-tight" style={{
@@ -476,6 +521,38 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/* Barra de IA usadas / cuota. Se pone roja desde el 75%. */
+function ContadorIA({ usadas, cuota }) {
+  const conCuota = cuota !== null && cuota !== undefined && cuota > 0;
+  const tope = conCuota ? cuota : TOPE_SEGURIDAD_SIN_CUOTA;
+  const pct = Math.min(100, Math.round((usadas / tope) * 100));
+  const alerta = pct >= 75;
+  const agotada = usadas >= tope;
+  const color = alerta ? "var(--danger)" : "var(--cyan)";
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
+        <span style={{ color: "var(--text)" }}>Fotos IA usadas</span>
+        <span style={{ color, fontWeight: 600 }}>
+          {usadas} / {tope}{conCuota ? "" : " (tope de seguridad)"}
+        </span>
+      </div>
+      <div style={{ height: 6, borderRadius: 100, background: "var(--border)", marginTop: 8, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, transition: "width 0.3s ease" }} />
+      </div>
+      {agotada ? (
+        <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 8, lineHeight: 1.5 }}>
+          Cuota agotada: los invitados ya no pueden generar fotos IA. Pide al administrador que agregue fotos.
+        </div>
+      ) : alerta ? (
+        <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 8, lineHeight: 1.5 }}>
+          Quedan {tope - usadas} fotos IA. Si se van a acabar, avisa al administrador.
+        </div>
+      ) : null}
     </div>
   );
 }
