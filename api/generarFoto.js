@@ -8,9 +8,11 @@
 // El frontend, despues de recibir el taskId, llama repetidamente a
 // api/consultarFoto.js (cada ~3 seg) hasta que la imagen este lista.
 //
-// RUTEO POR MOTOR (Sept 2026):
+// RUTEO POR MOTOR (Oct 2026):
 // - Simpsons y Barbie SIEMPRE usan Seedream 4.5, sin importar el tier del
 //   evento.
+// - Futbol Fan Argentina (futbol_fan_4) SIEMPRE usa Seedream 5.0, sin
+//   importar el tier del evento.
 // - Los modos del bloque DIVERTIDOS SIEMPRE usan GPT Image 2 (medium) y
 //   solo estan disponibles en eventos premium. Si un evento base intenta
 //   usarlos, el servidor rechaza la solicitud.
@@ -67,6 +69,9 @@ const MOTORES = {
 // Modos que SIEMPRE usan Seedream 4.5, sin importar el tier contratado.
 const MODOS_FIJOS_SEEDREAM_45 = ['simpsons', 'barbie'];
 
+// Modos que SIEMPRE usan Seedream 5.0, sin importar el tier contratado.
+const MODOS_FIJOS_SEEDREAM_50 = ['futbol_fan_4'];
+
 // Bloque DIVERTIDOS: SIEMPRE usan GPT Image y SOLO en eventos premium.
 const MODOS_DIVERTIDOS = [
   'ojos_saltones',
@@ -88,6 +93,9 @@ const MENSAJE_CUOTA_AGOTADA =
 function resolverMotor(modo, motorDelEvento) {
   if (MODOS_FIJOS_SEEDREAM_45.includes(modo)) {
     return 'seedream_4_5';
+  }
+  if (MODOS_FIJOS_SEEDREAM_50.includes(modo)) {
+    return 'seedream_5_0';
   }
   if (MODOS_DIVERTIDOS.includes(modo)) {
     return 'gpt_image_medium';
