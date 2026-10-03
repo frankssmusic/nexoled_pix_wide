@@ -1,12 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { supabase } from "../supabase";
 import { urlsDe } from "../lib";
 import { Logo, Vacio } from "../components/UI";
 
+// Tiempos en pantalla (milisegundos).
+const DURACION_FOTO = 5000;
+const DURACION_QR = 6000; // 20% más que antes
+
+// Con 5 fotos o más, el QR aparece cada 5 fotos.
+// Con menos de 5, aparece después de que pasan todas.
+const FOTOS_ENTRE_QR = 5;
+
 export default function Pantalla({ evento: eventoInicial, fotos }) {
   const [evento, setEvento] = useState(eventoInicial);
   const aprobadas = fotos.filter((f) => f.status === "approved");
+  const total = aprobadas.length;
   const urlSubida = evento ? urlsDe(evento.slug).subir : "";
 
   /* Polling: cada 15s App.js ya refresca las fotos.
@@ -22,30 +31,33 @@ export default function Pantalla({ evento: eventoInicial, fotos }) {
     return () => clearInterval(t);
   }, [eventoInicial?.id]);
 
-  /* Intercala el QR: si hay pocas fotos, tras cada una; si hay muchas, cada 6 */
-  const slides = (() => {
-    if (aprobadas.length === 0) return [{ type: "qr" }];
-    if (aprobadas.length < 6) {
-      return aprobadas.flatMap((f) => [{ type: "foto", data: f }, { type: "qr" }]);
-    }
-    return aprobadas.reduce((acc, f, i) => {
-      acc.push({ type: "foto", data: f });
-      if ((i + 1) % 6 === 0) acc.push({ type: "qr" });
-      return acc;
-    }, []);
-  })();
+  /* ---------- Secuencia: fotos y QR ---------- */
+  const [fotoIdx, setFotoIdx] = useState(0);
+  const [mostrandoQR, setMostrandoQR] = useState(false);
+  const fotosDesdeQRRef = useRef(0);
 
-  const [current, setCurrent] = useState(0);
+  // Cada cuántas fotos aparece el QR: todas si hay menos de 5, si no cada 5.
+  const cadaCuantas = Math.min(Math.max(total, 1), FOTOS_ENTRE_QR);
 
   useEffect(() => {
-    if (slides.length <= 1) return;
-    const t = setInterval(() => setCurrent((c) => (c + 1) % slides.length), 5000);
-    return () => clearInterval(t);
-  }, [slides.length]);
-
-  useEffect(() => {
-    if (current >= slides.length && slides.length > 0) setCurrent(0);
-  }, [slides.length, current]);
+    if (total === 0) return undefined; // sin fotos, el QR queda fijo
+    const duracion = mostrandoQR ? DURACION_QR : DURACION_FOTO;
+    const t = setTimeout(() => {
+      if (mostrandoQR) {
+        setMostrandoQR(false);
+        setFotoIdx((i) => (i + 1) % total);
+        return;
+      }
+      fotosDesdeQRRef.current += 1;
+      if (fotosDesdeQRRef.current >= cadaCuantas) {
+        fotosDesdeQRRef.current = 0;
+        setMostrandoQR(true);
+      } else {
+        setFotoIdx((i) => (i + 1) % total);
+      }
+    }, duracion);
+    return () => clearTimeout(t);
+  }, [mostrandoQR, fotoIdx, total, cadaCuantas]);
 
   if (!evento) {
     return <Vacio titulo="Evento no encontrado" detalle="Revisa la dirección de la pantalla." />;
@@ -72,6 +84,9 @@ export default function Pantalla({ evento: eventoInicial, fotos }) {
     );
   }
 
+  const verQR = total === 0 || mostrandoQR;
+  const fotoActual = total > 0 ? aprobadas[fotoIdx % total] : null;
+
   return (
     <div style={{
       position: "fixed", inset: 0, background: "#000",
@@ -91,7 +106,7 @@ export default function Pantalla({ evento: eventoInicial, fotos }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span className="dot dot-live" />
           <span className="eyebrow" style={{ fontSize: 10 }}>
-            {aprobadas.length} foto{aprobadas.length !== 1 ? "s" : ""}
+            {total} foto{total !== 1 ? "s" : ""}
           </span>
         </div>
       </div>
@@ -101,8 +116,8 @@ export default function Pantalla({ evento: eventoInicial, fotos }) {
         flex: 1, display: "flex", alignItems: "center",
         justifyContent: "center", overflow: "hidden",
       }}>
-        {slides[current]?.type === "qr" ? (
-          <div style={{
+        {verQR ? (
+          <div className="rise" style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             gap: 56, width: "100%", height: "100%", padding: 40,
           }}>
@@ -123,8 +138,8 @@ export default function Pantalla({ evento: eventoInicial, fotos }) {
           </div>
         ) : (
           <img
-            key={current}
-            src={slides[current]?.data?.url}
+            key={`${fotoActual?.id}-${fotoIdx}`}
+            src={fotoActual?.url}
             alt=""
             className="rise"
             style={{ width: "100%", height: "100%", objectFit: "contain" }}
