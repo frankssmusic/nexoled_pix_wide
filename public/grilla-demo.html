@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FUNfoto IA - Opciones de grilla</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --fondo: #0a0a0f; --superficie: #12121a; --texto: #f2f2f7; --tenue: #9a9aae;
+    --cian: #00e5ff; --magenta: #e040fb;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--fondo); color: var(--texto); font-family: 'DM Sans', system-ui, sans-serif; }
+  body { padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+  button { font-family: inherit; color: inherit; }
+  .app { max-width: 430px; margin: 0 auto; padding-bottom: 40px; }
+
+  .selector { position: sticky; top: 0; z-index: 10; background: rgba(10,10,15,0.94); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .selector-titulo { font-size: 12px; color: var(--tenue); margin-bottom: 8px; }
+  .tabs { display: flex; gap: 8px; }
+  .tab { flex: 1; min-height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.14); background: transparent; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .tab.activa { border-color: var(--cian); background: rgba(0,229,255,0.12); color: var(--cian); }
+
+  .vista { display: none; padding-top: 22px; }
+  .vista.activa { display: block; }
+  .cabecera { padding: 0 16px; margin-bottom: 16px; }
+  .marca { font-size: 12px; color: var(--tenue); margin-bottom: 4px; }
+  .titulo { font-family: 'Unbounded', sans-serif; font-weight: 800; font-size: 22px; margin: 0; }
+
+  .silueta { position: absolute; pointer-events: none; }
+  .especial { position: relative; display: block; width: calc(100% - 32px); margin: 0 16px 20px; border-radius: 18px; overflow: hidden; border: 1px solid var(--magenta); background: linear-gradient(135deg, #3a0f4a 0%, #120a22 55%, #06343d 100%); padding: 0; text-align: left; cursor: pointer; color: #fff; }
+  .especial .info { position: absolute; left: 18px; bottom: 16px; display: flex; flex-direction: column; gap: 4px; }
+  .especial .etiqueta { font-size: 12px; color: #f0a6ff; }
+  .especial .nombre { font-family: 'Unbounded', sans-serif; font-weight: 800; font-size: 22px; }
+
+  /* A: filas */
+  .fila { margin-bottom: 22px; }
+  .fila-cab { display: flex; justify-content: space-between; align-items: baseline; padding: 0 16px; margin-bottom: 10px; }
+  .fila-titulo { font-family: 'Unbounded', sans-serif; font-weight: 600; font-size: 15px; }
+  .fila-cant { font-size: 12px; color: var(--tenue); }
+  .carril { display: flex; gap: 10px; overflow-x: auto; padding: 0 16px; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .carril::-webkit-scrollbar { display: none; }
+  .poster { position: relative; flex: 0 0 118px; height: 170px; border-radius: 14px; overflow: hidden; padding: 0; cursor: pointer; scroll-snap-align: start; text-align: left; color: #fff; border: 1px solid rgba(255,255,255,0.10); }
+  .poster .rotulo { position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 10px 10px; background: linear-gradient(180deg, rgba(10,10,15,0) 0%, rgba(10,10,15,0.92) 60%); font-weight: 700; font-size: 13px; line-height: 1.2; }
+
+  /* B: de dos en dos */
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px; margin-bottom: 16px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: 0 0 auto; min-height: 40px; padding: 0 16px; border-radius: 100px; border: 1px solid rgba(255,255,255,0.14); background: transparent; color: #c9c9d6; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .chip.activa { border-color: var(--cian); background: rgba(0,229,255,0.14); color: var(--cian); }
+  .carrusel { display: flex; gap: 12px; overflow-x: auto; padding: 0 16px; scroll-snap-type: x mandatory; scroll-padding: 0 16px; scrollbar-width: none; }
+  .carrusel::-webkit-scrollbar { display: none; }
+  .tarjeta { position: relative; flex: 0 0 calc((100% - 12px) / 2); height: 300px; border-radius: 18px; overflow: hidden; padding: 0; cursor: pointer; scroll-snap-align: start; text-align: left; color: #fff; border: 1px solid rgba(255,255,255,0.10); }
+  .tarjeta .rotulo { position: absolute; left: 0; right: 0; bottom: 0; padding: 34px 14px 14px; background: linear-gradient(180deg, rgba(10,10,15,0) 0%, rgba(10,10,15,0.94) 55%); display: flex; flex-direction: column; gap: 4px; }
+  .tarjeta .cat { font-size: 11px; color: #7df3ff; }
+  .tarjeta.div .cat { color: #f0a6ff; }
+  .tarjeta .nom { font-family: 'Unbounded', sans-serif; font-weight: 600; font-size: 15px; line-height: 1.2; }
+  .pista { text-align: center; font-size: 12px; color: var(--tenue); margin-top: 14px; }
+
+  /* C: iconos */
+  .divertidos { display: flex; align-items: center; gap: 14px; width: calc(100% - 32px); margin: 0 16px 18px; padding: 14px 16px; border-radius: 18px; border: 1px solid rgba(224,64,251,0.5); background: #16101f; text-align: left; cursor: pointer; }
+  .divertidos .circ { flex: 0 0 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(224,64,251,0.6); color: var(--magenta); }
+  .divertidos .t1 { font-family: 'Unbounded', sans-serif; font-weight: 600; font-size: 16px; display: block; }
+  .divertidos .t2 { font-size: 12px; color: #c9c9d6; }
+  .rejilla { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 0 16px; }
+  .icono { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 6px 14px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); background: var(--superficie); cursor: pointer; }
+  .icono .circ { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(0,229,255,0.08); color: var(--cian); }
+  .icono .nom { font-size: 12px; font-weight: 700; text-align: center; line-height: 1.2; }
+
+  .pregunta { margin: 28px 16px 0; padding: 16px; border-radius: 16px; border: 1px dashed rgba(255,255,255,0.18); font-size: 13px; color: #c9c9d6; line-height: 1.6; }
+  .pregunta strong { color: var(--texto); }
+  button:focus-visible { outline: 2px solid var(--cian); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="selector">
+    <div class="selector-titulo">Prueba las 3 opciones y dinos cuál prefieres</div>
+    <div class="tabs" role="tablist">
+      <button class="tab activa" data-vista="a" role="tab" aria-selected="true">Opción A</button>
+      <button class="tab" data-vista="b" role="tab" aria-selected="false">Opción B</button>
+      <button class="tab" data-vista="c" role="tab" aria-selected="false">Opción C</button>
+    </div>
+  </div>
+
+  <!-- A -->
+  <section class="vista activa" id="vista-a">
+    <div class="cabecera"><div class="marca">FUNfoto IA</div><h1 class="titulo">Elige un modo</h1></div>
+    <button class="especial" style="height: 160px">
+      <svg class="silueta" viewBox="0 0 100 100" style="right: 10px; bottom: 0; width: 150px; height: 150px" aria-hidden="true"><circle cx="50" cy="38" r="17" fill="rgba(255,255,255,0.16)"/><path d="M14 100 C14 66 86 66 86 100 Z" fill="rgba(255,255,255,0.16)"/></svg>
+      <span class="info"><span class="etiqueta">Especial de la noche</span><span class="nombre">Halloween 2026</span></span>
+    </button>
+    <div id="filas"></div>
+  </section>
+
+  <!-- B -->
+  <section class="vista" id="vista-b">
+    <div class="cabecera"><div class="marca">FUNfoto IA</div><h1 class="titulo">Elige un modo</h1></div>
+    <div class="chips" id="chips"></div>
+    <button class="especial" style="height: 120px">
+      <svg class="silueta" viewBox="0 0 100 100" style="right: 12px; bottom: 0; width: 116px; height: 116px" aria-hidden="true"><circle cx="50" cy="38" r="17" fill="rgba(255,255,255,0.16)"/><path d="M14 100 C14 66 86 66 86 100 Z" fill="rgba(255,255,255,0.16)"/></svg>
+      <span class="info"><span class="etiqueta">Especial de la noche</span><span class="nombre">Halloween 2026</span></span>
+    </button>
+    <div class="carrusel" id="carrusel"></div>
+    <div class="pista">Desliza para ver más modos</div>
+  </section>
+
+  <!-- C -->
+  <section class="vista" id="vista-c">
+    <div class="cabecera"><div class="marca">FUNfoto IA</div><h1 class="titulo">Elige un modo</h1></div>
+    <button class="especial" style="height: 96px">
+      <span class="info" style="left: 18px; bottom: 18px"><span class="etiqueta">Especial de la noche</span><span class="nombre">Halloween 2026</span></span>
+    </button>
+    <button class="divertidos">
+      <span class="circ"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 14c1.2 1.6 2.5 2.4 4 2.4s2.8-.8 4-2.4"/><circle cx="9" cy="10" r="1.3"/><circle cx="15" cy="10" r="1.3"/></svg></span>
+      <span><span class="t1">Divertidos</span><span class="t2">Filtros chistosos para reírse en grupo</span></span>
+    </button>
+    <div class="rejilla" id="rejilla"></div>
+  </section>
+
+  <div class="pregunta">
+    <strong>Cuéntanos:</strong> ¿cuál te dan más ganas de tocar?, ¿en cuál encuentras más rápido un modo? y ¿cuál se ve mejor en tu celular?
+  </div>
+</div>
+
+<script>
+(function () {
+  var silueta = '<svg class="silueta" viewBox="0 0 100 100" style="left: 8%; bottom: 18%; width: 84%; height: 60%" aria-hidden="true"><circle cx="50" cy="38" r="17" fill="rgba(255,255,255,0.18)"/><path d="M14 100 C14 66 86 66 86 100 Z" fill="rgba(255,255,255,0.18)"/></svg>';
+  function tono(a, b) { return 'linear-gradient(160deg, ' + a + ' 0%, ' + b + ' 100%)'; }
+
+  var modos = [
+    ['Ojos Saltones', 'Divertidos', '#5a1468', '#1a0b2e'], ['Maquillaje de Tía', 'Divertidos', '#6b1a4a', '#1f0b22'],
+    ['Cara de Bebé', 'Divertidos', '#4d2a6e', '#140c2a'], ['Cabezones', 'Divertidos', '#5e1d5c', '#170a24'],
+    ['Game of Thrones', 'Cine', '#4a3a2a', '#141016'], ['Peaky Style', 'Cine', '#2e2a26', '#0e0d10'],
+    ['Breaking Bad', 'Cine', '#1f4a3a', '#0b1612'], ['Harry Magic', 'Cine', '#3a2a5a', '#100c1c'],
+    ['Jurassic Park', 'Cine', '#2a4a22', '#0c140a'], ['Super Hero', 'Cine', '#5a1f22', '#160909'],
+    ['Old School', 'Épocas', '#5a4a2a', '#18130a'], ['70s Disco', 'Épocas', '#6a3a1a', '#1c0f08'],
+    ['Viejitos', 'Épocas', '#4a4a52', '#121216'], ['Simpsons', 'Animados', '#6a5a12', '#1a1606'],
+    ['Barbie', 'Animados', '#6a1f4a', '#1c0a16'], ['Princesa Disney', 'Animados', '#2a3a6a', '#0b1020'],
+    ['Fútbol Fan', 'Fútbol', '#1a3a6a', '#080e1c']
+  ];
+  var titulosFila = { 'Divertidos': 'Divertidos', 'Cine': 'Cine y series', 'Épocas': 'Épocas', 'Animados': 'Animados y fantasía', 'Fútbol': 'Fútbol Fan' };
+
+  // A: filas
+  var htmlFilas = '';
+  Object.keys(titulosFila).forEach(function (cat) {
+    var lista = modos.filter(function (m) { return m[1] === cat; });
+    var posters = lista.map(function (m) {
+      var borde = cat === 'Divertidos' ? 'border-color: #e040fb;' : '';
+      return '<button class="poster" style="background:' + tono(m[2], m[3]) + ';' + borde + '">' + silueta + '<span class="rotulo">' + m[0] + '</span></button>';
+    }).join('');
+    htmlFilas += '<div class="fila"><div class="fila-cab"><span class="fila-titulo">' + titulosFila[cat] + '</span><span class="fila-cant">' + lista.length + ' modos</span></div><div class="carril">' + posters + '</div></div>';
+  });
+  document.getElementById('filas').innerHTML = htmlFilas;
+
+  // B: chips + carrusel
+  var cats = ['Todos', 'Divertidos', 'Cine', 'Épocas', 'Animados', 'Fútbol'];
+  var actual = 'Todos';
+  function pintarB() {
+    document.getElementById('chips').innerHTML = cats.map(function (c) {
+      return '<button class="chip' + (c === actual ? ' activa' : '') + '" data-cat="' + c + '">' + c + '</button>';
+    }).join('');
+    document.getElementById('carrusel').innerHTML = modos.filter(function (m) {
+      return actual === 'Todos' || m[1] === actual;
+    }).map(function (m) {
+      var div = m[1] === 'Divertidos';
+      return '<button class="tarjeta' + (div ? ' div' : '') + '" style="background:' + tono(m[2], m[3]) + ';' + (div ? 'border-color:#e040fb;' : '') + '">' + silueta + '<span class="rotulo"><span class="cat">' + m[1] + '</span><span class="nom">' + m[0] + '</span></span></button>';
+    }).join('');
+    document.getElementById('carrusel').scrollLeft = 0;
+  }
+  document.getElementById('chips').addEventListener('click', function (ev) {
+    var b = ev.target.closest('.chip');
+    if (!b) return;
+    actual = b.getAttribute('data-cat');
+    pintarB();
+  });
+  pintarB();
+
+  // C: iconos
+  var iconos = [
+    ['Game of Thrones', '<path d="M12 2v14"/><path d="M7 16h10"/><path d="M12 16v5"/><path d="M10 6l2-4 2 4"/>'],
+    ['Peaky Style', '<path d="M3 15c0-4.5 4-7.5 9-7.5s9 3 9 7.5z"/><path d="M3 15h18l-2 2H5z"/>'],
+    ['Breaking Bad', '<path d="M9 3h6"/><path d="M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>'],
+    ['Harry Magic', '<circle cx="7" cy="15" r="3"/><circle cx="17" cy="15" r="3"/><path d="M10 15h4"/><path d="M3 3l7 7"/><path d="M14 4l1 1-1 1-1-1z"/>'],
+    ['Super Hero', '<path d="M3 9c3-2 6-2 9 0 3-2 6-2 9 0-1 5-4 7-6 6l-3-2-3 2c-2 1-5-1-6-6z"/><path d="M7.5 10.5h2"/><path d="M14.5 10.5h2"/>'],
+    ['Jurassic Park', '<path d="M12 21c-3 0-4-3-4-5l4-4 4 4c0 2-1 5-4 5z"/><path d="M8 12L5 6"/><path d="M12 10V4"/><path d="M16 12l3-6"/>'],
+    ['Old School', '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="8.5" cy="12" r="2"/><circle cx="15.5" cy="12" r="2"/><path d="M8.5 12h7"/>'],
+    ['70s Disco', '<path d="M12 2v4"/><circle cx="12" cy="13" r="7"/><path d="M5 13h14"/><path d="M12 6c-2.5 2-2.5 12 0 14"/><path d="M12 6c2.5 2 2.5 12 0 14"/>'],
+    ['Viejitos', '<path d="M10 21V8a4 4 0 0 1 8 0"/>'],
+    ['Simpsons', '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M9 7l.5 1"/><path d="M15 8l-.5 1"/><path d="M16.5 13l-1 .3"/>'],
+    ['Barbie', '<path d="M9 21h6"/><path d="M9 21v-9h6v9"/><path d="M10 12V7l4-3v8"/>'],
+    ['Princesa Disney', '<path d="M3 18h18"/><path d="M4 18L3 8l5 4 4-7 4 7 5-4-1 10"/>'],
+    ['Fútbol Fan', '<circle cx="12" cy="12" r="9"/><path d="M12 7.5l3.5 2.5-1.3 4h-4.4l-1.3-4z"/><path d="M12 3v4.5"/><path d="M15.5 10l4.5-1.5"/><path d="M8.5 10L4 8.5"/>']
+  ];
+  document.getElementById('rejilla').innerHTML = iconos.map(function (i) {
+    return '<button class="icono"><span class="circ"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + i[1] + '</svg></span><span class="nom">' + i[0] + '</span></button>';
+  }).join('');
+
+  // Pestañas
+  var tabs = document.querySelectorAll('.tab');
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (x) { x.classList.remove('activa'); x.setAttribute('aria-selected', 'false'); });
+      t.classList.add('activa');
+      t.setAttribute('aria-selected', 'true');
+      document.querySelectorAll('.vista').forEach(function (v) { v.classList.remove('activa'); });
+      document.getElementById('vista-' + t.getAttribute('data-vista')).classList.add('activa');
+      window.scrollTo(0, 0);
+    });
+  });
+})();
+</script>
+</body>
+</html>
