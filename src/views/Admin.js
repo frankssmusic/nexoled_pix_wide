@@ -6,9 +6,11 @@ import { cargarJSZip, cargarXLSX } from "../cdn";
 import Icon from "../components/Icons";
 import { Logo, Toast, Stat, Vacio, Modal } from "../components/UI";
 
-// Costo por foto IA según el motor del evento (precios públicos de WaveSpeed).
-// base -> Seedream 5.0 Pro 1k | premium -> GPT Image 2 medium
-const COSTOS_USD_POR_FOTO_IA = { base: 0.045, premium: 0.0665 };
+// Costos por foto IA de respaldo (US$). Los reales se editan en el Admin
+// (tabla configuracion). base -> Seedream 5.0 Pro 1k | premium -> GPT Image 2
+const COSTOS_RESPALDO = { base: 0.045, premium: 0.08 };
+
+const URL_PRECIOS_WAVESPEED = "https://wavespeed.ai/models";
 
 // Dólar de respaldo si no se puede obtener el del día desde mindicador.cl.
 const CLP_POR_USD_RESPALDO = 950;
@@ -60,11 +62,12 @@ const MENSAJE_FALTAN_INVITADOS = "Ingresa el número de invitados para calcular 
 // Todo evento con Especial va con Premium (el Especial siempre usa GPT Image).
 const tieneEspecialContenido = (contenido) => !!contenido && contenido !== "grilla";
 
-// Precio sugerido (con IVA) de N fotos IA según el tier y el dólar.
-const precioSugerido = (n, tier, dolar) => {
-  const costo = COSTOS_USD_POR_FOTO_IA[tier] || COSTOS_USD_POR_FOTO_IA.base;
-  return n * costo * dolar * FACTOR_UTILIDAD * (1 + TASA_IVA);
-};
+// Costo por foto según el tier y los precios cargados.
+const costoDeTier = (tier, costos) => (tier === "premium" ? costos.premium : costos.base);
+
+// Precio sugerido (con IVA) de N fotos IA según el tier, los precios y el dólar.
+const precioSugerido = (n, tier, dolar, costos) =>
+  n * costoDeTier(tier, costos) * dolar * FACTOR_UTILIDAD * (1 + TASA_IVA);
 
 // Redondea a múltiplos de 5, mínimo 5.
 const redondear5 = (x) => Math.max(5, Math.round(x / 5) * 5);
@@ -185,6 +188,10 @@ export default function Admin() {
   const [verOps, setVerOps] = useState(false);
   const [opsSel, setOpsSel] = useState([]);
   const [dolar, setDolar] = useState({ valor: CLP_POR_USD_RESPALDO, fecha: null, oficial: false });
+  const [costos, setCostos] = useState(COSTOS_RESPALDO);
+  const [costosEdit, setCostosEdit] = useState({ base: "", premium: "" });
+  const [costosActualizado, setCostosActualizado] = useState(null);
+  const [guardandoCostos, setGuardandoCostos] = useState(false);
 
   /* ---------- Sesión de Supabase Auth ---------- */
   useEffect(() => {
@@ -225,6 +232,50 @@ export default function Admin() {
       }
     })();
   }, [loggedIn]);
+
+  /* ---------- Precios de IA (tabla configuracion) ---------- */
+  useEffect(() => {
+    if (!loggedIn) return;
+    (async () => {
+      const { data, error: err } = await supabase
+        .from("configuracion").select("clave, valor, actualizado")
+        .in("clave", ["costo_base_usd", "costo_premium_usd"]);
+      if (err || !data) return;
+      const mapa = {};
+      let ultima = null;
+      data.forEach((f) => {
+        mapa[f.clave] = Number(f.valor);
+        if (!ultima || f.actualizado > ultima) ultima = f.actualizado;
+      });
+      const nuevos = {
+        base: mapa.costo_base_usd > 0 ? mapa.costo_base_usd : COSTOS_RESPALDO.base,
+        premium: mapa.costo_premium_usd > 0 ? mapa.costo_premium_usd : COSTOS_RESPALDO.premium,
+      };
+      setCostos(nuevos);
+      setCostosEdit({ base: String(nuevos.base), premium: String(nuevos.premium) });
+      setCostosActualizado(ultima);
+    })();
+  }, [loggedIn]);
+
+  const guardarCostos = async () => {
+    const base = parseFloat(String(costosEdit.base).replace(",", "."));
+    const premium = parseFloat(String(costosEdit.premium).replace(",", "."));
+    if (!(base > 0 && base < 2) || !(premium > 0 && premium < 2)) {
+      setToast("Revisa los precios: deben ser mayores que 0 y menores que 2 dólares");
+      return;
+    }
+    setGuardandoCostos(true);
+    const ahora = new Date().toISOString();
+    const { error: err } = await supabase.from("configuracion").upsert([
+      { clave: "costo_base_usd", valor: base, actualizado: ahora },
+      { clave: "costo_premium_usd", valor: premium, actualizado: ahora },
+    ]);
+    setGuardandoCostos(false);
+    if (err) { setToast("No se pudieron guardar los precios"); return; }
+    setCostos({ base, premium });
+    setCostosActualizado(ahora);
+    setToast("Precios de IA actualizados");
+  };
 
   /* ---------- Cargar eventos + conteo de fotos ---------- */
   const cargarEventos = useCallback(async () => {
@@ -788,6 +839,7 @@ export default function Admin() {
                 invitados={invNuevoNum}
                 fotosPorPersona={planNuevo.fotos}
                 tier={motorNuevoVista}
+                costos={costos}
                 conEspecial={nuevoConEspecial}
                 dolar={dolar.valor}
               />
@@ -1055,6 +1107,7 @@ export default function Admin() {
                           invitados={invNum}
                           fotosPorPersona={planVista.fotos}
                           tier={tierCot}
+                          costos={costos}
                           conEspecial={tieneEspecial}
                           dolar={dolar.valor}
                         />
@@ -1102,7 +1155,7 @@ export default function Admin() {
                                   +{s.n} fotos · total {(ev.cuota_ia || 0) + s.n}
                                 </div>
                                 <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>
-                                  ~{clp(precioSugerido(s.n, tierCot, dolar.valor))} con IVA
+                                  ~{clp(precioSugerido(s.n, tierCot, dolar.valor, costos))} con IVA
                                 </div>
                               </button>
                             ))}
@@ -1125,7 +1178,7 @@ export default function Admin() {
                         {parseInt(extraInput[ev.id], 10) > 0 && (
                           <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>
                             Total {(ev.cuota_ia || 0) + parseInt(extraInput[ev.id], 10)} · ~
-                            {clp(precioSugerido(parseInt(extraInput[ev.id], 10), tierCot, dolar.valor))} con IVA
+                            {clp(precioSugerido(parseInt(extraInput[ev.id], 10), tierCot, dolar.valor, costos))} con IVA
                           </div>
                         )}
                         <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
@@ -1259,6 +1312,45 @@ export default function Admin() {
           })}
         </div>
       )}
+
+      {/* Precios de IA */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Icon.Settings size={17} color="var(--text-dim)" />
+            <span className="display" style={{ fontSize: 16 }}>Precios de IA</span>
+          </div>
+          <button className="btn btn-ghost btn-sm"
+            onClick={() => window.open(URL_PRECIOS_WAVESPEED, "_blank", "noopener,noreferrer")}>
+            Ver precios en WaveSpeed
+          </button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginTop: 14 }}>
+          <div>
+            <label className="label">Base (Seedream) · US$ por foto</label>
+            <input className="input" type="number" step="0.001" min="0"
+              value={costosEdit.base}
+              onChange={(e) => setCostosEdit((p) => ({ ...p, base: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label">Premium y Especial (GPT Image) · US$ por foto</label>
+            <input className="input" type="number" step="0.001" min="0"
+              value={costosEdit.premium}
+              onChange={(e) => setCostosEdit((p) => ({ ...p, premium: e.target.value }))} />
+          </div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 11, color: "var(--text-faint)", lineHeight: 1.5 }}>
+            Se usan en todas las cotizaciones y en el registro de costos de cada foto.
+            {costosActualizado
+              ? ` Última actualización: ${new Date(costosActualizado).toLocaleDateString("es-CL")}.`
+              : ""}
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={guardarCostos} disabled={guardandoCostos}>
+            {guardandoCostos ? "Guardando..." : "Guardar precios"}
+          </button>
+        </div>
+      </div>
 
       {/* Mantenimiento del almacenamiento */}
       <div className="card" style={{ marginTop: 16 }}>
@@ -1411,8 +1503,8 @@ function ContadorIA({ usadas, cuota }) {
 }
 
 /* Cuadro de cuota y cotización (se usa al crear y al editar un evento) */
-function Cotizacion({ cuota, extra, invitados, fotosPorPersona, tier, conEspecial, dolar }) {
-  const costoPorFoto = COSTOS_USD_POR_FOTO_IA[tier] || COSTOS_USD_POR_FOTO_IA.base;
+function Cotizacion({ cuota, extra, invitados, fotosPorPersona, tier, costos, conEspecial, dolar }) {
+  const costoPorFoto = costoDeTier(tier, costos);
   const costoUsd = cuota * costoPorFoto;
   const costoClp = costoUsd * dolar;
   const precioNeto = costoClp * FACTOR_UTILIDAD;

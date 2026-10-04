@@ -9,23 +9,41 @@
 //
 // Si WaveSpeed responde "completed" -> ahí SÍ hacemos el trabajo pesado
 // (descargar la imagen, subirla a Supabase, crear el registro en `fotos`)
-// y devolvemos { listo: true, foto }. Como la imagen ya está lista en ese
-// momento, este paso final es rápido (unos segundos), muy lejos del límite
-// de 60s de Vercel.
+// y devolvemos { listo: true, foto }.
 //
-// NOTA (Sept 2026): ahora recibe motorUsado (que generarFoto.js le pasó al
-// frontend) y lo guarda en fotos.motor_usado + calcula fotos.costo_estimado
-// según ese motor. Esto alimenta el futuro dashboard de consumo/costos.
+// COSTOS (Oct 2026): el costo por foto se lee de la tabla `configuracion`
+// (precios editables desde el Admin). Si no se puede leer, usa los de respaldo.
 
 const { createClient } = require('@supabase/supabase-js');
 
-// Costo real por foto según el motor — debe coincidir con los precios
-// definidos en api/generarFoto.js (MOTORES).
-const COSTOS_POR_MOTOR = {
-  seedream_4_5: 0.045,
-  seedream_5_0: 0.045,
-  gpt_image_medium: 0.0665,
+// Costos de respaldo (US$ por foto) si no se puede leer la configuración.
+const COSTOS_RESPALDO = { base: 0.045, premium: 0.08 };
+
+// Qué precio corresponde a cada motor.
+const TIPO_POR_MOTOR = {
+  seedream_4_5: 'base',
+  seedream_5_0: 'base',
+  gpt_image_medium: 'premium',
 };
+
+// Lee los precios vigentes desde la tabla configuracion.
+async function leerCostos(supabase) {
+  try {
+    const { data, error } = await supabase
+      .from('configuracion')
+      .select('clave, valor')
+      .in('clave', ['costo_base_usd', 'costo_premium_usd']);
+    if (error || !data) return COSTOS_RESPALDO;
+    const mapa = {};
+    data.forEach((f) => { mapa[f.clave] = Number(f.valor); });
+    return {
+      base: mapa.costo_base_usd > 0 ? mapa.costo_base_usd : COSTOS_RESPALDO.base,
+      premium: mapa.costo_premium_usd > 0 ? mapa.costo_premium_usd : COSTOS_RESPALDO.premium,
+    };
+  } catch {
+    return COSTOS_RESPALDO;
+  }
+}
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -58,7 +76,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (status !== 'completed' && status !== 'succeeded') {
-      // Sigue "processing" o "pending" — el frontend vuelve a preguntar.
+      // Sigue "processing" o "pending": el frontend vuelve a preguntar.
       return res.status(200).json({ listo: false });
     }
 
@@ -99,13 +117,16 @@ module.exports = async function handler(req, res) {
       .from('fotos')
       .getPublicUrl(nombreArchivo);
 
-    // Costo real de esta generación, según qué motor se usó.
-    // Si por algún motivo no llega motorUsado (llamada vieja o error),
-    // no rompe nada: queda null y el registro se guarda igual.
-    const costoEstimado = motorUsado ? (COSTOS_POR_MOTOR[motorUsado] ?? null) : null;
+    // Costo de esta generación según el motor usado y los precios vigentes.
+    // Si no llega motorUsado, queda null y el registro se guarda igual.
+    let costoEstimado = null;
+    if (motorUsado && TIPO_POR_MOTOR[motorUsado]) {
+      const costos = await leerCostos(supabase);
+      costoEstimado = costos[TIPO_POR_MOTOR[motorUsado]];
+    }
 
-    // Registrar la foto como BORRADOR (igual que antes) — el operador no la
-    // ve hasta que el invitado confirme con "Usar esta foto".
+    // Registrar la foto como BORRADOR: el operador no la ve hasta que el
+    // invitado confirme con "Usar esta foto".
     const { data: fotoCreada, error: errorInsert } = await supabase
       .from('fotos')
       .insert({
@@ -136,4 +157,4 @@ module.exports = async function handler(req, res) {
       error: error.message || 'Error consultando el estado de la generación',
     });
   }
-}
+};
