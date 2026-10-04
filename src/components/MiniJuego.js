@@ -3,7 +3,10 @@
 // Minijuego de naves para la espera de FUNfoto IA.
 // - La nave avanza (fondo de estrellas en 3 capas) y dispara sola.
 // - Se mueve arrastrando el dedo.
-// - Sube de nivel cada 20 segundos: enemigos más rápidos y tipos nuevos.
+// - Sube de nivel cada 15 segundos: enemigos más rápidos y tipos nuevos
+//   (zigzag desde nivel 2, blindado desde nivel 3, tirador desde nivel 4).
+// - Se pierde una vida: al chocar con un alien, al recibir un disparo
+//   enemigo, o cada 3 aliens que escapan vivos por abajo.
 // - Cajas de premio: vida, arma doble/triple, escudo y disparo rápido.
 // - Al terminar se guarda el puntaje con un apodo y se muestra el top 5
 //   del evento (solo lo ve quien jugó).
@@ -23,12 +26,22 @@ const COLORES = {
 };
 
 const PUNTAJE_MAXIMO = 500000;
-const SEGUNDOS_POR_NIVEL = 20;
+const SEGUNDOS_POR_NIVEL = 15;
 const VIDAS_INICIALES = 3;
 const VIDAS_MAXIMAS = 5;
+const ESCAPES_POR_VIDA = 3;
 const CORAZON = "\u2665";
 const CLAVE_APODO = "funfoto_apodo";
 const FUENTE = "system-ui, -apple-system, sans-serif";
+
+// Nivel desde el que aparece cada tipo de enemigo.
+const NIVEL_ZIGZAG = 2;
+const NIVEL_BLINDADO = 3;
+const NIVEL_TIRADOR = 4;
+
+// Cada cuánto aparece una caja de premio (milisegundos).
+const CAJA_MIN_MS = 7000;
+const CAJA_VARIACION_MS = 4000;
 
 const EMOJI_FIESTA = "\u{1F389}";
 const EMOJI_ALERTA = "\u{26A0}\u{FE0F}";
@@ -112,12 +125,14 @@ function crearJuego(canvas, alTerminar) {
     puntaje: 0,
     vidas: VIDAS_INICIALES,
     arma: 1,
+    escapados: 0,
     escudoHasta: 0,
     rapidoHasta: 0,
     invulnerableHasta: 1500,
+    flashHasta: 0,
     ultimoDisparo: 0,
     proximoEnemigo: 900,
-    proximaCaja: 7000,
+    proximaCaja: 6000,
     bannerNivelHasta: 1600,
     nave: { x: W / 2, y: H - 110, objetivoX: W / 2 },
     balas: [],
@@ -171,9 +186,9 @@ function crearJuego(canvas, alTerminar) {
 
   const tiposDisponibles = () => {
     const tipos = ["simple"];
-    if (e.nivel >= 3) tipos.push("zigzag");
-    if (e.nivel >= 5) tipos.push("blindado");
-    if (e.nivel >= 7) tipos.push("tirador");
+    if (e.nivel >= NIVEL_ZIGZAG) tipos.push("zigzag");
+    if (e.nivel >= NIVEL_BLINDADO) tipos.push("blindado");
+    if (e.nivel >= NIVEL_TIRADOR) tipos.push("tirador");
     return tipos;
   };
 
@@ -234,12 +249,11 @@ function crearJuego(canvas, alTerminar) {
     }
   };
 
-  const recibirGolpe = () => {
-    if (e.tiempo < e.invulnerableHasta || e.tiempo < e.escudoHasta || e.terminado) return;
+  // Resta una vida y revisa si se terminó la partida.
+  const perderVida = () => {
+    if (e.terminado) return;
     e.vidas--;
-    e.arma = Math.max(1, e.arma - 1);
-    e.invulnerableHasta = e.tiempo + 1500;
-    explosion(e.nave.x, e.nave.y, COLORES.cian, 20);
+    e.flashHasta = e.tiempo + 350;
     try {
       if (navigator.vibrate) navigator.vibrate(120);
     } catch {
@@ -251,6 +265,26 @@ function crearJuego(canvas, alTerminar) {
       setTimeout(() => {
         if (vivo) alTerminar({ puntaje: Math.round(e.puntaje), nivel: e.nivel });
       }, 1000);
+    }
+  };
+
+  // Golpe directo (choque o disparo): respeta escudo e invulnerabilidad.
+  const recibirGolpe = () => {
+    if (e.tiempo < e.invulnerableHasta || e.tiempo < e.escudoHasta || e.terminado) return;
+    e.arma = Math.max(1, e.arma - 1);
+    e.invulnerableHasta = e.tiempo + 1500;
+    explosion(e.nave.x, e.nave.y, COLORES.cian, 20);
+    perderVida();
+  };
+
+  // Un alien escapó por abajo: cada 3, se pierde una vida.
+  const registrarEscape = () => {
+    if (e.terminado) return;
+    e.escapados++;
+    if (e.escapados >= ESCAPES_POR_VIDA) {
+      e.escapados = 0;
+      textoFlotante(W / 2, H * 0.55, "¡SE ESCAPARON 3!", COLORES.rojo);
+      perderVida();
     }
   };
 
@@ -312,7 +346,7 @@ function crearJuego(canvas, alTerminar) {
     e.proximaCaja -= dt;
     if (e.proximaCaja <= 0) {
       e.cajas.push({ x: 30 + Math.random() * (W - 60), y: -30, vy: 1.3, ang: 0, radio: 16 });
-      e.proximaCaja = 8000 + Math.random() * 5000;
+      e.proximaCaja = CAJA_MIN_MS + Math.random() * CAJA_VARIACION_MS;
     }
 
     // Movimiento.
@@ -390,9 +424,17 @@ function crearJuego(canvas, alTerminar) {
       }
     });
 
+    // Aliens que escaparon vivos por abajo.
+    e.enemigos.forEach((en) => {
+      if (!en.muerto && !en.escapado && en.y >= H + 30) {
+        en.escapado = true;
+        registrarEscape();
+      }
+    });
+
     // Limpieza.
     e.balas = e.balas.filter((b) => !b.muerta && b.y > -20 && b.x > -20 && b.x < W + 20);
-    e.enemigos = e.enemigos.filter((en) => !en.muerto && en.y < H + 40);
+    e.enemigos = e.enemigos.filter((en) => !en.muerto && !en.escapado);
     e.balasEnemigas = e.balasEnemigas.filter((b) => !b.muerta && b.y < H + 20 && b.y > -20 && b.x > -20 && b.x < W + 20);
     e.cajas = e.cajas.filter((c) => !c.muerta && c.y < H + 40);
 
@@ -585,7 +627,7 @@ function crearJuego(canvas, alTerminar) {
     });
     ctx.globalAlpha = 1;
 
-    // Textos de premio.
+    // Textos de premio y avisos.
     ctx.font = `800 14px ${FUENTE}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -629,6 +671,24 @@ function crearJuego(canvas, alTerminar) {
     ctx.fillStyle = COLORES.rojo;
     ctx.fillText(CORAZON.repeat(Math.max(0, e.vidas)), W - 14, 56);
 
+    // Contador de aliens escapados (3 puntos).
+    ctx.font = `700 10px ${FUENTE}`;
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.fillText("ESCAPADOS", W - 14 - ESCAPES_POR_VIDA * 14 - 4, 84);
+    for (let i = 0; i < ESCAPES_POR_VIDA; i++) {
+      const cx = W - 14 - (ESCAPES_POR_VIDA - 1 - i) * 14 - 5;
+      ctx.beginPath();
+      ctx.arc(cx, 89, 5, 0, Math.PI * 2);
+      if (i < e.escapados) {
+        ctx.fillStyle = COLORES.rojo;
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = "rgba(255,255,255,0.4)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+
     // Aviso de nivel.
     if (e.tiempo < e.bannerNivelHasta && !e.terminado) {
       ctx.globalAlpha = Math.min(1, (e.bannerNivelHasta - e.tiempo) / 600);
@@ -647,7 +707,18 @@ function crearJuego(canvas, alTerminar) {
       ctx.textBaseline = "middle";
       ctx.font = `600 14px ${FUENTE}`;
       ctx.fillStyle = "rgba(255,255,255,0.8)";
-      ctx.fillText("Arrastra el dedo para mover la nave", W / 2, H - 40);
+      ctx.fillText("Arrastra el dedo para mover la nave", W / 2, H - 52);
+      ctx.font = `600 12px ${FUENTE}`;
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.fillText("Si se escapan 3 aliens, pierdes una vida", W / 2, H - 32);
+      ctx.globalAlpha = 1;
+    }
+
+    // Destello rojo al perder una vida.
+    if (e.tiempo < e.flashHasta) {
+      ctx.globalAlpha = Math.min(0.35, (e.flashHasta - e.tiempo) / 1000);
+      ctx.fillStyle = COLORES.rojo;
+      ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
     }
 
