@@ -28,6 +28,19 @@ const TIERS = [
   { id: "premium", nombre: "Premium" },
 ];
 
+// Contenido IA del evento. "Grilla normal" es el Especial apagado.
+const OPCIONES_CONTENIDO = [
+  { id: "grilla", nombre: "Grilla normal" },
+  { id: "especial_grilla", nombre: "Especial + grilla" },
+  { id: "solo_especial", nombre: "Solo Especial" },
+];
+
+const DETALLE_CONTENIDO = {
+  grilla: "Sin Especial. El invitado ve la grilla de modos según el tier.",
+  especial_grilla: "Especial destacado + grilla completa con Divertidos. Siempre Premium.",
+  solo_especial: "El invitado va directo al Especial, sin grilla.",
+};
+
 // Planes de fotos por persona.
 const PLANES_FOTOS = [
   { id: "estandar", nombre: "Estándar", fotos: 2 },
@@ -41,6 +54,9 @@ const planPorId = (id) => PLANES_FOTOS.find((p) => p.id === id) || PLANES_FOTOS[
 const clp = (n) => `$${Math.round(n).toLocaleString("es-CL")}`;
 const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 const MENSAJE_FALTAN_INVITADOS = "Ingresa el número de invitados para calcular la cuota y el precio";
+
+// Con Especial, todo se cotiza a precio GPT (el Especial siempre usa GPT Image).
+const tierParaCotizar = (tier, contenido) => (contenido && contenido !== "grilla" ? "premium" : tier);
 
 // Precio sugerido (con IVA) de N fotos IA según el tier y el dólar.
 const precioSugerido = (n, tier, dolar) => {
@@ -99,28 +115,35 @@ async function listarRaizBucket(busqueda) {
   return todos.filter((a) => a.id);
 }
 
-// Nombres de archivo que sí pertenecen a una fila de la tabla fotos.
+// Nombres de archivo que están en uso: fotos de la tabla y referencias del Especial.
 async function nombresReferenciados() {
   const usados = new Set();
+  const agregar = (url) => {
+    const nombre = (url || "").split("/fotos/")[1];
+    if (nombre) usados.add(nombre);
+  };
   let desde = 0;
   for (;;) {
     const { data, error } = await supabase
       .from("fotos").select("url").range(desde, desde + 999);
     if (error) throw error;
     const lote = data || [];
-    lote.forEach((f) => {
-      const nombre = (f.url || "").split("/fotos/")[1];
-      if (nombre) usados.add(nombre);
-    });
+    lote.forEach((f) => agregar(f.url));
     if (lote.length < 1000) break;
     desde += 1000;
   }
+  const { data: evs, error: errEv } = await supabase
+    .from("eventos").select("especial_ref_url, especial_ref_url_2");
+  if (errEv) throw errEv;
+  (evs || []).forEach((e) => {
+    agregar(e.especial_ref_url);
+    agregar(e.especial_ref_url_2);
+  });
   return usados;
 }
 
-// Borra las selfies originales que el Asistente sube para la IA.
-async function borrarOriginalesDeEvento(eventoId) {
-  const prefijo = `original_${eventoId}_`;
+// Borra los archivos de la raíz que empiezan con un prefijo.
+async function borrarPorPrefijo(prefijo) {
   const archivos = await listarRaizBucket(prefijo);
   const nombres = archivos.map((a) => a.name).filter((n) => n.startsWith(prefijo));
   if (nombres.length) await borrarEnLotes(nombres);
@@ -144,6 +167,7 @@ export default function Admin() {
   const [creando, setCreando] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevoMotor, setNuevoMotor] = useState("base");
+  const [nuevoContenido, setNuevoContenido] = useState("grilla");
   const [nuevoPlan, setNuevoPlan] = useState("estandar");
   const [nuevosInvitados, setNuevosInvitados] = useState("");
   const [expandido, setExpandido] = useState(null);
@@ -231,6 +255,7 @@ export default function Admin() {
   const limpiarFormularioCrear = () => {
     setNuevoNombre("");
     setNuevoMotor("base");
+    setNuevoContenido("grilla");
     setNuevoPlan("estandar");
     setNuevosInvitados("");
   };
@@ -254,6 +279,7 @@ export default function Admin() {
       if (existe) slug = `${slug}-${sufijoCorto()}`;
 
       const plan = planPorId(nuevoPlan);
+      const motor = nuevoContenido === "especial_grilla" ? "premium" : nuevoMotor;
 
       const clave = Math.random().toString(36).slice(2, 8);
       const { error: err } = await supabase.from("eventos").insert({
@@ -266,7 +292,9 @@ export default function Admin() {
         mensaje_subida: "Subir foto",
         session_version: 1,
         ia_habilitada: true,
-        motor_ia: nuevoMotor,
+        motor_ia: motor,
+        contenido_ia: nuevoContenido,
+        especial_habilitado: nuevoContenido !== "grilla",
         cuota_plan: plan.id,
         fotos_por_persona: plan.fotos,
         invitados: invitadosNum,
@@ -276,7 +304,9 @@ export default function Admin() {
       limpiarFormularioCrear();
       setMostrarCrear(false);
       setVerCerrados(false);
-      setToast(`Evento creado: ${slug}`);
+      setToast(nuevoContenido === "grilla"
+        ? `Evento creado: ${slug}`
+        : `Evento creado: ${slug}. Recuerda configurar el Especial.`);
       cargarEventos();
     } catch {
       setToast("No se pudo crear el evento");
@@ -311,7 +341,7 @@ export default function Admin() {
   };
 
   /* Borra las fotos del evento (archivos + filas) y las selfies originales.
-     No toca el contador de IA usadas. */
+     No toca el contador de IA usadas ni las referencias del Especial. */
   const borrarArchivosDeEvento = async (ev) => {
     const { data: fs } = await supabase.from("fotos").select("url").eq("evento_id", ev.id);
     if (fs?.length) {
@@ -319,7 +349,7 @@ export default function Admin() {
       if (paths.length) await borrarEnLotes(paths);
     }
     await supabase.from("fotos").delete().eq("evento_id", ev.id);
-    await borrarOriginalesDeEvento(ev.id);
+    await borrarPorPrefijo(`original_${ev.id}_`);
   };
 
   const borrarFotos = async (ev) => {
@@ -337,6 +367,7 @@ export default function Admin() {
     if (!window.confirm(`¿Eliminar "${ev.nombre}" y todo su contenido? Esto no se puede deshacer.`)) return;
     try {
       await borrarArchivosDeEvento(ev);
+      await borrarPorPrefijo(`especial_${ev.id}_`);
       await supabase.from("operadores").delete().eq("evento_id", ev.id);
       await supabase.from("eventos").delete().eq("id", ev.id);
       setToast(`"${ev.nombre}" eliminado`);
@@ -462,8 +493,28 @@ export default function Admin() {
 
   const cambiarTier = (ev, motor) => {
     if ((ev.motor_ia || "base") === motor) return;
+    if (ev.contenido_ia === "especial_grilla" && motor === "base") {
+      setToast("Especial + grilla siempre va con Premium");
+      return;
+    }
     actualizar(ev, { motor_ia: motor },
       motor === "premium" ? "Evento cambiado a Premium" : "Evento cambiado a Base");
+  };
+
+  const cambiarContenido = (ev, valor) => {
+    if ((ev.contenido_ia || "grilla") === valor) return;
+    const campos = { contenido_ia: valor, especial_habilitado: valor !== "grilla" };
+    if (valor === "especial_grilla") campos.motor_ia = "premium";
+    const mensajes = {
+      grilla: "Especial apagado",
+      especial_grilla: "Especial + grilla activado (Premium)",
+      solo_especial: "Solo Especial activado",
+    };
+    actualizar(ev, campos, mensajes[valor]);
+  };
+
+  const abrirEspecial = (ev) => {
+    window.location.href = urlsDe(ev.slug).especial;
   };
 
   const copiar = (texto, etiqueta) => {
@@ -610,6 +661,7 @@ export default function Admin() {
   const planNuevo = planPorId(nuevoPlan);
   const invNuevoNum = parseInt(nuevosInvitados, 10) || 0;
   const cuotaNueva = invNuevoNum * planNuevo.fotos;
+  const motorNuevoVista = nuevoContenido === "especial_grilla" ? "premium" : nuevoMotor;
 
   return (
     <div style={{ padding: "20px 16px 60px", maxWidth: 900, margin: "0 auto" }}>
@@ -685,8 +737,30 @@ export default function Admin() {
           )}
 
           <div style={{ marginTop: 14 }}>
+            <label className="label">Contenido IA</label>
+            <SelectorPills opciones={OPCIONES_CONTENIDO} valor={nuevoContenido}
+              onChange={setNuevoContenido} destacado={nuevoContenido !== "grilla" ? nuevoContenido : null} />
+            <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
+              {DETALLE_CONTENIDO[nuevoContenido]}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
             <label className="label">Tier contratado</label>
-            <SelectorPills opciones={TIERS} valor={nuevoMotor} onChange={setNuevoMotor} destacado="premium" />
+            <SelectorPills opciones={TIERS} valor={motorNuevoVista}
+              onChange={(m) => {
+                if (nuevoContenido === "especial_grilla" && m === "base") {
+                  setToast("Especial + grilla siempre va con Premium");
+                  return;
+                }
+                setNuevoMotor(m);
+              }}
+              destacado="premium" />
+            {nuevoContenido === "especial_grilla" && (
+              <div style={{ fontSize: 11, color: "var(--magenta)", marginTop: 6 }}>
+                Bloqueado en Premium por tener Especial + grilla.
+              </div>
+            )}
           </div>
 
           <div style={{ marginTop: 14 }}>
@@ -709,7 +783,8 @@ export default function Admin() {
                 extra={0}
                 invitados={invNuevoNum}
                 fotosPorPersona={planNuevo.fotos}
-                tier={nuevoMotor}
+                tier={tierParaCotizar(motorNuevoVista, nuevoContenido)}
+                conEspecial={nuevoContenido !== "grilla"}
                 dolar={dolar.valor}
               />
             </div>
@@ -771,6 +846,9 @@ export default function Admin() {
             const urls = urlsDe(ev.slug);
             const camposEd = editando[ev.id] || {};
             const tierEv = ev.motor_ia === "premium" ? "premium" : "base";
+            const contenidoEv = ev.contenido_ia || "grilla";
+            const tieneEspecial = contenidoEv !== "grilla";
+            const tierCot = tierParaCotizar(tierEv, contenidoEv);
 
             const planVista = planPorId(camposEd.plan ?? ev.cuota_plan);
             const planGuardado = planPorId(ev.cuota_plan);
@@ -794,6 +872,11 @@ export default function Admin() {
                       {tierEv === "premium" && (
                         <span className="chip" style={{ color: "var(--magenta)", borderColor: "var(--magenta)" }}>
                           Premium
+                        </span>
+                      )}
+                      {tieneEspecial && (
+                        <span className="chip" style={{ color: "#fff", borderColor: "var(--magenta)", background: "rgba(224,64,251,0.18)" }}>
+                          {contenidoEv === "solo_especial" ? "Solo Especial" : "Especial"}
                         </span>
                       )}
                       <span className="chip">{planGuardado.nombre}</span>
@@ -885,15 +968,49 @@ export default function Admin() {
                         </div>
                       </div>
 
+                      {/* --- Contenido IA (Especial) --- */}
+                      <div>
+                        <label className="label">Contenido IA</label>
+                        <SelectorPills opciones={OPCIONES_CONTENIDO} valor={contenidoEv}
+                          onChange={(valor) => cambiarContenido(ev, valor)}
+                          destacado={tieneEspecial ? contenidoEv : null} />
+                        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
+                          {DETALLE_CONTENIDO[contenidoEv]} Se guarda al tocarlo.
+                        </div>
+                        {tieneEspecial && (
+                          <div style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                            marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-sm)",
+                            border: "1px solid var(--magenta)", background: "rgba(224,64,251,0.06)", flexWrap: "wrap",
+                          }}>
+                            <div style={{ fontSize: 13, color: "var(--text)" }}>
+                              {ev.especial_label
+                                ? <>Tarjeta: <b>{ev.especial_label}</b></>
+                                : "Falta configurar el Especial"}
+                              {!ev.especial_prompt && (
+                                <div style={{ fontSize: 11, color: "var(--warn, #f5a623)", marginTop: 3 }}>
+                                  Sin prompt: el Especial no funcionará hasta configurarlo.
+                                </div>
+                              )}
+                            </div>
+                            <button className="btn btn-primary btn-sm" onClick={() => abrirEspecial(ev)}>
+                              <Icon.Settings size={14} /> Configurar Especial
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
                       {/* --- Tier contratado --- */}
                       <div>
                         <label className="label">Tier contratado</label>
                         <SelectorPills opciones={TIERS} valor={tierEv}
                           onChange={(motor) => cambiarTier(ev, motor)} destacado="premium" />
-                        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
-                          {tierEv === "premium"
-                            ? "Premium: motor GPT Image + modos Divertidos. Se guarda al tocarlo."
-                            : "Base: motor Seedream 5, sin modos Divertidos. Se guarda al tocarlo."}
+                        <div style={{ fontSize: 11, color: contenidoEv === "especial_grilla" ? "var(--magenta)" : "var(--text-faint)", marginTop: 6 }}>
+                          {contenidoEv === "especial_grilla"
+                            ? "Bloqueado en Premium por tener Especial + grilla."
+                            : tierEv === "premium"
+                              ? "Premium: motor GPT Image + modos Divertidos. Se guarda al tocarlo."
+                              : "Base: motor Seedream 5, sin modos Divertidos. Se guarda al tocarlo."}
                         </div>
                       </div>
 
@@ -933,7 +1050,8 @@ export default function Admin() {
                           extra={extra}
                           invitados={invNum}
                           fotosPorPersona={planVista.fotos}
-                          tier={tierEv}
+                          tier={tierCot}
+                          conEspecial={tieneEspecial}
                           dolar={dolar.valor}
                         />
                       ) : (
@@ -980,7 +1098,7 @@ export default function Admin() {
                                   +{s.n} fotos · total {(ev.cuota_ia || 0) + s.n}
                                 </div>
                                 <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>
-                                  ~{clp(precioSugerido(s.n, tierEv, dolar.valor))} con IVA
+                                  ~{clp(precioSugerido(s.n, tierCot, dolar.valor))} con IVA
                                 </div>
                               </button>
                             ))}
@@ -1003,7 +1121,7 @@ export default function Admin() {
                         {parseInt(extraInput[ev.id], 10) > 0 && (
                           <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>
                             Total {(ev.cuota_ia || 0) + parseInt(extraInput[ev.id], 10)} · ~
-                            {clp(precioSugerido(parseInt(extraInput[ev.id], 10), tierEv, dolar.valor))} con IVA
+                            {clp(precioSugerido(parseInt(extraInput[ev.id], 10), tierCot, dolar.valor))} con IVA
                           </div>
                         )}
                         <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
@@ -1152,8 +1270,8 @@ export default function Admin() {
           )}
         </div>
         <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8, lineHeight: 1.5 }}>
-          Busca archivos que no pertenecen a ninguna foto (por ejemplo, selfies originales usadas para la IA)
-          con más de {HORAS_MINIMAS_HUERFANO} horas. No lo uses en medio de un evento de varios días.
+          Busca archivos que no pertenecen a ninguna foto ni a un Especial (por ejemplo, selfies originales
+          usadas para la IA) con más de {HORAS_MINIMAS_HUERFANO} horas. No lo uses en medio de un evento de varios días.
         </div>
         {huerfanos && (
           <div style={{
@@ -1289,7 +1407,7 @@ function ContadorIA({ usadas, cuota }) {
 }
 
 /* Cuadro de cuota y cotización (se usa al crear y al editar un evento) */
-function Cotizacion({ cuota, extra, invitados, fotosPorPersona, tier, dolar }) {
+function Cotizacion({ cuota, extra, invitados, fotosPorPersona, tier, conEspecial, dolar }) {
   const costoPorFoto = COSTOS_USD_POR_FOTO_IA[tier] || COSTOS_USD_POR_FOTO_IA.base;
   const costoUsd = cuota * costoPorFoto;
   const costoClp = costoUsd * dolar;
@@ -1316,13 +1434,14 @@ function Cotizacion({ cuota, extra, invitados, fotosPorPersona, tier, dolar }) {
       <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8, lineHeight: 1.5 }}>
         Negocia entre el costo máximo y el total. Cálculo: {invitados || "?"} invitados x {fotosPorPersona} fotos
         {extra > 0 ? ` + ${extra} extra` : ""}, a US${costoPorFoto} por foto (tier {tier}), dólar {clp(dolar)}.
-        Solo cubre el costo de IA, no el arriendo de la pantalla.
+        {conEspecial ? " Con Especial se cotiza todo a precio GPT Image." : ""}
+        {" "}Solo cubre el costo de IA, no el arriendo de la pantalla.
       </div>
     </div>
   );
 }
 
-/* Selector de pastillas (tier o plan de fotos) */
+/* Selector de pastillas (tier, contenido o plan de fotos) */
 function SelectorPills({ opciones, valor, onChange, destacado }) {
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

@@ -3,7 +3,8 @@
 // Configurador del "Especial de la noche" de un evento.
 // Dirección: /admin/especial/<slug>  (requiere sesión de admin)
 //
-// - Tipo de contenido: Grilla normal / Especial + grilla / Solo Especial
+// El tipo de contenido (Grilla / Especial + grilla / Solo Especial) se elige
+// en el Admin principal. Aquí solo se configura:
 // - Nombre de la tarjeta que ve el invitado
 // - Prompt del Especial (lo lee solo el servidor)
 // - Hasta 2 imágenes de referencia. A la IA se mandan en orden:
@@ -14,11 +15,10 @@ import { supabase } from "../supabase";
 import Icon from "../components/Icons";
 import { Logo, Toast, Vacio } from "../components/UI";
 
-const OPCIONES_CONTENIDO = [
-  { id: "grilla", nombre: "Grilla normal", detalle: "Solo los modos de siempre, sin Especial." },
-  { id: "especial_grilla", nombre: "Especial + grilla", detalle: "El Especial destacado arriba y la grilla completa abajo." },
-  { id: "solo_especial", nombre: "Solo Especial", detalle: "El invitado va directo al Especial, sin grilla." },
-];
+const NOMBRES_CONTENIDO = {
+  especial_grilla: "Especial + grilla",
+  solo_especial: "Solo Especial",
+};
 
 const MAX_NOMBRE = 40;
 const MAX_MB = 8;
@@ -26,13 +26,13 @@ const TIPOS_PERMITIDOS = ["image/png", "image/jpeg", "image/webp"];
 const EMOJI_BRILLO = "\u{2728}";
 
 const nombreDesdeUrl = (url) => (url || "").split("/fotos/")[1] || null;
+const irAlAdmin = () => { window.location.href = "/admin"; };
 
 export default function EspecialEditor({ slug }) {
   const [verificando, setVerificando] = useState(true);
   const [conSesion, setConSesion] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [evento, setEvento] = useState(null);
-  const [contenido, setContenido] = useState("grilla");
   const [nombre, setNombre] = useState("");
   const [prompt, setPrompt] = useState("");
   const [refs, setRefs] = useState([null, null]);
@@ -67,7 +67,6 @@ export default function EspecialEditor({ slug }) {
         .maybeSingle();
       if (data) {
         setEvento(data);
-        setContenido(data.contenido_ia || "grilla");
         setNombre(data.especial_label || "");
         setPrompt(data.especial_prompt || "");
         const lista = [data.especial_ref_url || null, data.especial_ref_url_2 || null];
@@ -127,10 +126,9 @@ export default function EspecialEditor({ slug }) {
   /* ---------- Guardar ---------- */
   const guardar = async () => {
     if (!evento) return;
-    if (contenido !== "grilla") {
-      if (!nombre.trim()) { setToast("Ponle un nombre a la tarjeta del Especial"); return; }
-      if (!prompt.trim()) { setToast("Escribe el prompt del Especial"); return; }
-    }
+    if (!nombre.trim()) { setToast("Ponle un nombre a la tarjeta del Especial"); return; }
+    if (!prompt.trim()) { setToast("Escribe el prompt del Especial"); return; }
+
     // Si solo hay una referencia, queda siempre como la primera.
     const lista = refs.filter(Boolean);
     const r1 = lista[0] || null;
@@ -140,10 +138,8 @@ export default function EspecialEditor({ slug }) {
     const { error } = await supabase
       .from("eventos")
       .update({
-        contenido_ia: contenido,
-        especial_habilitado: contenido !== "grilla",
-        especial_label: nombre.trim() || null,
-        especial_prompt: prompt.trim() || null,
+        especial_label: nombre.trim(),
+        especial_prompt: prompt.trim(),
         especial_ref_url: r1,
         especial_ref_url_2: r2,
       })
@@ -180,17 +176,13 @@ export default function EspecialEditor({ slug }) {
 
   if (!conSesion) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <div className="card" style={{ maxWidth: 380, width: "100%", textAlign: "center" }}>
-          <Logo size={22} />
-          <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, margin: "18px 0" }}>
-            Necesitas iniciar sesión en el Admin para configurar el Especial.
-          </p>
-          <button className="btn btn-primary btn-block" onClick={() => { window.location.href = "/admin"; }}>
-            Ir al Admin
-          </button>
-        </div>
-      </div>
+      <Centro>
+        <Logo size={22} />
+        <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, margin: "18px 0" }}>
+          Necesitas iniciar sesión en el Admin para configurar el Especial.
+        </p>
+        <button className="btn btn-primary btn-block" onClick={irAlAdmin}>Ir al Admin</button>
+      </Centro>
     );
   }
 
@@ -198,7 +190,20 @@ export default function EspecialEditor({ slug }) {
     return <Vacio titulo="Evento no encontrado" detalle="Revisa la dirección o vuelve al Admin." />;
   }
 
-  const desactivado = contenido === "grilla";
+  const contenido = evento.contenido_ia || "grilla";
+
+  if (contenido === "grilla") {
+    return (
+      <Centro>
+        <Logo size={22} />
+        <div className="display" style={{ fontSize: 18, marginTop: 16 }}>{evento.nombre}</div>
+        <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.6, margin: "14px 0 18px" }}>
+          Este evento no tiene Especial activado. Actívalo desde el Admin, en "Contenido IA".
+        </p>
+        <button className="btn btn-primary btn-block" onClick={irAlAdmin}>Volver al Admin</button>
+      </Centro>
+    );
+  }
 
   return (
     <div style={{ padding: "20px 16px 110px", maxWidth: 820, margin: "0 auto" }}>
@@ -215,99 +220,71 @@ export default function EspecialEditor({ slug }) {
           <Logo size={22} />
           <div className="eyebrow" style={{ marginTop: 10, color: "var(--magenta)" }}>Especial de la noche</div>
           <div className="display" style={{ fontSize: 20, marginTop: 4 }}>{evento.nombre}</div>
+          <span className="chip" style={{ marginTop: 8, color: "#fff", borderColor: "var(--magenta)", background: "rgba(224,64,251,0.18)" }}>
+            {NOMBRES_CONTENIDO[contenido] || contenido}
+          </span>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={() => { window.location.href = "/admin"; }}>
-          Volver al Admin
-        </button>
+        <button className="btn btn-ghost btn-sm" onClick={irAlAdmin}>Volver al Admin</button>
       </header>
 
-      {/* 1. Tipo de contenido */}
+      {/* 1. Nombre de la tarjeta */}
       <div className="card" style={{ marginBottom: 14 }}>
-        <div className="label">Tipo de contenido IA</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-          {OPCIONES_CONTENIDO.map((o) => {
-            const activo = contenido === o.id;
-            return (
-              <button key={o.id}
-                onClick={() => { setContenido(o.id); setCambios(true); }}
-                style={{
-                  textAlign: "left", cursor: "pointer", padding: "12px 14px", borderRadius: "var(--r-sm)",
-                  background: activo ? "rgba(224,64,251,0.10)" : "var(--bg)",
-                  border: `1px solid ${activo ? "var(--magenta)" : "var(--border)"}`,
-                  fontFamily: "var(--font-body)",
-                }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: activo ? "var(--magenta)" : "var(--text)" }}>
-                  {o.nombre}
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 4, lineHeight: 1.45 }}>
-                  {o.detalle}
-                </div>
-              </button>
-            );
-          })}
+        <div className="label">Nombre de la tarjeta</div>
+        <input className="input" value={nombre} maxLength={MAX_NOMBRE}
+          placeholder="Halloween 2026"
+          onChange={(e) => { setNombre(e.target.value); setCambios(true); }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 11, color: "var(--text-faint)" }}>
+            Es lo que ve el invitado en la tarjeta destacada. {nombre.length}/{MAX_NOMBRE}
+          </div>
+          <div style={{
+            padding: "10px 16px", borderRadius: 12, fontSize: 13, fontWeight: 700, color: "#fff",
+            border: "1px solid var(--magenta)",
+            background: "linear-gradient(135deg, rgba(224,64,251,0.25), rgba(0,229,255,0.15))",
+            boxShadow: "0 0 18px rgba(224,64,251,0.3)",
+          }}>
+            {EMOJI_BRILLO} {nombre.trim() || "Nombre del Especial"}
+          </div>
         </div>
       </div>
 
-      <div style={{ opacity: desactivado ? 0.45 : 1, pointerEvents: desactivado ? "none" : "auto", transition: "opacity 0.2s ease" }}>
-        {/* 2. Nombre de la tarjeta */}
-        <div className="card" style={{ marginBottom: 14 }}>
-          <div className="label">Nombre de la tarjeta</div>
-          <input className="input" value={nombre} maxLength={MAX_NOMBRE}
-            placeholder="Halloween 2026"
-            onChange={(e) => { setNombre(e.target.value); setCambios(true); }} />
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 11, color: "var(--text-faint)" }}>
-              Es lo que ve el invitado en la tarjeta destacada. {nombre.length}/{MAX_NOMBRE}
-            </div>
-            <div style={{
-              padding: "10px 16px", borderRadius: 12, fontSize: 13, fontWeight: 700, color: "#fff",
-              border: "1px solid var(--magenta)",
-              background: "linear-gradient(135deg, rgba(224,64,251,0.25), rgba(0,229,255,0.15))",
-              boxShadow: "0 0 18px rgba(224,64,251,0.3)",
-            }}>
-              {EMOJI_BRILLO} {nombre.trim() || "Nombre del Especial"}
-            </div>
-          </div>
+      {/* 2. Prompt */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="label">Prompt</div>
+        <textarea
+          value={prompt}
+          onChange={(e) => { setPrompt(e.target.value); setCambios(true); }}
+          rows={14}
+          placeholder="Pega aquí el prompt del Especial"
+          style={{
+            width: "100%", resize: "vertical", padding: 12, borderRadius: "var(--r-sm)",
+            background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)",
+            fontFamily: "monospace", fontSize: 13, lineHeight: 1.55, boxSizing: "border-box",
+          }}
+        />
+        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8, lineHeight: 1.6 }}>
+          {prompt.length.toLocaleString("es-CL")} caracteres. Orden de imágenes que recibe la IA:
+          1) selfie del invitado, 2) referencia 1, 3) referencia 2. Siempre se genera con GPT Image.
         </div>
+      </div>
 
-        {/* 3. Prompt */}
-        <div className="card" style={{ marginBottom: 14 }}>
-          <div className="label">Prompt</div>
-          <textarea
-            value={prompt}
-            onChange={(e) => { setPrompt(e.target.value); setCambios(true); }}
-            rows={14}
-            placeholder="Pega aquí el prompt del Especial"
-            style={{
-              width: "100%", resize: "vertical", padding: 12, borderRadius: "var(--r-sm)",
-              background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)",
-              fontFamily: "monospace", fontSize: 13, lineHeight: 1.55, boxSizing: "border-box",
-            }}
-          />
-          <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8, lineHeight: 1.6 }}>
-            {prompt.length.toLocaleString("es-CL")} caracteres. Orden de imágenes que recibe la IA:
-            1) selfie del invitado, 2) referencia 1, 3) referencia 2. Siempre se genera con GPT Image.
-          </div>
+      {/* 3. Referencias */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="label">Imágenes de referencia (opcional, hasta 2)</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+          {[0, 1].map((i) => (
+            <RanuraReferencia
+              key={i}
+              titulo={i === 0 ? "Referencia 1 (2ª imagen)" : "Referencia 2 (3ª imagen)"}
+              url={refs[i]}
+              subiendo={subiendo === i}
+              onSubir={() => (i === 0 ? inputRef1 : inputRef2).current?.click()}
+              onQuitar={() => quitarReferencia(i)}
+            />
+          ))}
         </div>
-
-        {/* 4. Referencias */}
-        <div className="card" style={{ marginBottom: 14 }}>
-          <div className="label">Imágenes de referencia (opcional, hasta 2)</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-            {[0, 1].map((i) => (
-              <RanuraReferencia
-                key={i}
-                titulo={i === 0 ? "Referencia 1 (2ª imagen)" : "Referencia 2 (3ª imagen)"}
-                url={refs[i]}
-                subiendo={subiendo === i}
-                onSubir={() => (i === 0 ? inputRef1 : inputRef2).current?.click()}
-                onQuitar={() => quitarReferencia(i)}
-              />
-            ))}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 10, lineHeight: 1.6 }}>
-            PNG, JPG o WEBP, máximo {MAX_MB} MB. Los PNG mantienen su transparencia (ideal para textos o logos).
-          </div>
+        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 10, lineHeight: 1.6 }}>
+          PNG, JPG o WEBP, máximo {MAX_MB} MB. Los PNG mantienen su transparencia (ideal para textos o logos).
         </div>
       </div>
 
@@ -325,6 +302,17 @@ export default function EspecialEditor({ slug }) {
             <Icon.Check size={15} /> {guardando ? "Guardando..." : "Guardar Especial"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* Tarjeta centrada para avisos. */
+function Centro({ children }) {
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div className="card" style={{ maxWidth: 400, width: "100%", textAlign: "center" }}>
+        {children}
       </div>
     </div>
   );
