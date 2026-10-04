@@ -1,14 +1,15 @@
 /* ==========================================================
-   UTILIDADES COMPARTIDAS — NexoPix Wide
+   UTILIDADES COMPARTIDAS - NexoPix Wide
    ========================================================== */
 
 /* ----------------------------------------------------------
    RUTEO POR SLUG
-   /                        -> aterrizaje (sin evento)
-   /subir/<slug>            -> asistente del evento
-   /operador/<slug>         -> panel operador del evento
-   /pantalla/<slug>         -> slideshow del evento
-   /admin                   -> panel global (todos los eventos)
+   /                          -> aterrizaje (sin evento)
+   /subir/<slug>              -> asistente del evento
+   /operador/<slug>           -> panel operador del evento
+   /pantalla/<slug>           -> slideshow del evento
+   /admin                     -> panel global (todos los eventos)
+   /admin/especial/<slug>     -> configurador del Especial del evento
    ---------------------------------------------------------- */
 export function getRoute() {
   const parts = window.location.pathname
@@ -19,7 +20,10 @@ export function getRoute() {
 
   const [head, slug] = parts;
 
-  if (head === "admin") return { view: "admin", slug: null };
+  if (head === "admin") {
+    if (parts[1] === "especial") return { view: "especial", slug: parts[2] || null };
+    return { view: "admin", slug: null };
+  }
   if (head === "subir") return { view: "asistente", slug: slug || null };
   if (head === "operador") return { view: "operador", slug: slug || null };
   if (head === "pantalla") return { view: "pantalla", slug: slug || null };
@@ -56,6 +60,7 @@ export function urlsDe(slug) {
     subir:    `${base}/subir/${slug}`,
     operador: `${base}/operador/${slug}`,
     pantalla: `${base}/pantalla/${slug}`,
+    especial: `${base}/admin/especial/${slug}`,
   };
 }
 
@@ -105,7 +110,7 @@ export function validarRut(rut) {
 /* ----------------------------------------------------------
    TÉRMINOS DEL OPERADOR
    ---------------------------------------------------------- */
-export const OP_TERMS = `TÉRMINOS Y CONDICIONES PARA OPERADORES — NEXOPIX
+export const OP_TERMS = `TÉRMINOS Y CONDICIONES PARA OPERADORES - NEXOPIX
 
 Al registrarse como operador de un evento NexoPix, usted declara conocer y aceptar las siguientes condiciones:
 

@@ -5,11 +5,12 @@ import Asistente from "./views/Asistente";
 import Operador from "./views/Operador";
 import Pantalla from "./views/Pantalla";
 import Admin from "./views/Admin";
+import EspecialEditor from "./views/EspecialEditor";
 import { Logo, Spinner, Vacio } from "./components/UI";
 import Icon from "./components/Icons";
 
-// Columnas públicas del evento. NO incluye clave_operador: esa solo la ve
-// el admin y la valida el servidor (/api/operador).
+// Columnas públicas del evento. NO incluye clave_operador ni el prompt del
+// Especial: esos solo los ve el admin o el servidor.
 const COLUMNAS_EVENTO_PUBLICAS = [
   "id",
   "nombre",
@@ -25,13 +26,18 @@ const COLUMNAS_EVENTO_PUBLICAS = [
   "cuota_ia",
   "ia_usadas",
   "created_at",
+  "contenido_ia",
+  "especial_label",
 ].join(", ");
+
+// Vistas que no cargan un evento público al entrar.
+const VISTAS_SIN_EVENTO = ["admin", "inicio", "especial"];
 
 export default function App() {
   const [{ view, slug }] = useState(getRoute);
   const [evento, setEvento] = useState(null);
   const [fotos, setFotos] = useState([]);
-  const [cargando, setCargando] = useState(view !== "admin" && view !== "inicio");
+  const [cargando, setCargando] = useState(!VISTAS_SIN_EVENTO.includes(view));
   const eventoIdRef = useRef(null);
 
   const fetchFotos = useCallback(async (eventoId) => {
@@ -46,7 +52,7 @@ export default function App() {
 
   /* Carga el evento a partir del slug de la URL */
   useEffect(() => {
-    if (view === "admin" || view === "inicio") return;
+    if (VISTAS_SIN_EVENTO.includes(view)) return;
     if (!slug) { setCargando(false); return; }
 
     const init = async () => {
@@ -85,6 +91,9 @@ export default function App() {
 
   /* --- Panel admin: no depende de slug --- */
   if (view === "admin") return <Admin />;
+
+  /* --- Configurador del Especial (pide sesión de admin) --- */
+  if (view === "especial") return <EspecialEditor slug={slug} />;
 
   /* --- Aterrizaje: alguien entró a la raíz sin evento --- */
   if (view === "inicio") {
