@@ -9,6 +9,9 @@
 // - Prompt del Especial (lo lee solo el servidor)
 // - Hasta 2 imágenes de referencia. A la IA se mandan en orden:
 //   1) selfie del invitado, 2) referencia 1, 3) referencia 2
+//
+// Las imágenes con fondo transparente se aplanan sobre un color sólido antes
+// de subirlas, porque la IA lee la transparencia como negro y no ve el logo.
 
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
@@ -20,13 +23,76 @@ const NOMBRES_CONTENIDO = {
   solo_especial: "Solo Especial",
 };
 
+const COLORES_FONDO = [
+  { id: "#000000", nombre: "Negro" },
+  { id: "#ffffff", nombre: "Blanco" },
+];
+
 const MAX_NOMBRE = 40;
 const MAX_MB = 8;
+const MAX_LADO_PX = 2048;
 const TIPOS_PERMITIDOS = ["image/png", "image/jpeg", "image/webp"];
 const EMOJI_BRILLO = "\u{2728}";
 
 const nombreDesdeUrl = (url) => (url || "").split("/fotos/")[1] || null;
 const irAlAdmin = () => { window.location.href = "/admin"; };
+
+/* Carga un archivo de imagen en memoria. */
+function cargarImagen(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => resolve({ img, url });
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("No se pudo leer la imagen"));
+    };
+    img.src = url;
+  });
+}
+
+/* Si la imagen tiene transparencia, la aplana sobre el color de fondo.
+   Devuelve { archivo, tipo, aplanada }. */
+async function prepararImagen(file, colorFondo) {
+  if (file.type === "image/jpeg") {
+    return { archivo: file, tipo: file.type, aplanada: false };
+  }
+  const { img, url } = await cargarImagen(file);
+  try {
+    const escala = Math.min(1, MAX_LADO_PX / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.round(img.naturalWidth * escala);
+    const h = Math.round(img.naturalHeight * escala);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, w, h);
+
+    // Revisa el canal de transparencia de cada píxel.
+    const datos = ctx.getImageData(0, 0, w, h).data;
+    let transparente = false;
+    for (let i = 3; i < datos.length; i += 4) {
+      if (datos[i] < 250) {
+        transparente = true;
+        break;
+      }
+    }
+    if (!transparente) {
+      return { archivo: file, tipo: file.type, aplanada: false };
+    }
+
+    // Pinta el color de fondo DETRÁS de la imagen.
+    ctx.globalCompositeOperation = "destination-over";
+    ctx.fillStyle = colorFondo;
+    ctx.fillRect(0, 0, w, h);
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("No se pudo procesar la imagen");
+    return { archivo: blob, tipo: "image/png", aplanada: true };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 export default function EspecialEditor({ slug }) {
   const [verificando, setVerificando] = useState(true);
@@ -37,6 +103,8 @@ export default function EspecialEditor({ slug }) {
   const [prompt, setPrompt] = useState("");
   const [refs, setRefs] = useState([null, null]);
   const [originales, setOriginales] = useState([null, null]);
+  const [avisos, setAvisos] = useState([null, null]);
+  const [colorFondo, setColorFondo] = useState("#000000");
   const [subiendo, setSubiendo] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [cambios, setCambios] = useState(false);
@@ -86,17 +154,26 @@ export default function EspecialEditor({ slug }) {
     }
   };
 
+  const cambiarAviso = (indice, texto) => {
+    setAvisos((prev) => {
+      const copia = [...prev];
+      copia[indice] = texto;
+      return copia;
+    });
+  };
+
   const subirReferencia = async (indice, file) => {
     if (!file || !evento) return;
     if (!TIPOS_PERMITIDOS.includes(file.type)) { setToast("Usa una imagen PNG, JPG o WEBP"); return; }
     if (file.size > MAX_MB * 1024 * 1024) { setToast(`La imagen pesa más de ${MAX_MB} MB`); return; }
     setSubiendo(indice);
     try {
-      const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+      const { archivo, tipo, aplanada } = await prepararImagen(file, colorFondo);
+      const ext = tipo === "image/png" ? "png" : tipo === "image/webp" ? "webp" : "jpg";
       const nombreArchivo = `especial_${evento.id}_${indice + 1}_${Date.now()}.${ext}`;
       const { error } = await supabase.storage
         .from("fotos")
-        .upload(nombreArchivo, file, { contentType: file.type });
+        .upload(nombreArchivo, archivo, { contentType: tipo });
       if (error) throw error;
       const { data } = supabase.storage.from("fotos").getPublicUrl(nombreArchivo);
       await borrarSiEsNueva(indice);
@@ -105,6 +182,10 @@ export default function EspecialEditor({ slug }) {
         copia[indice] = data.publicUrl;
         return copia;
       });
+      const nombreColor = COLORES_FONDO.find((c) => c.id === colorFondo)?.nombre.toLowerCase() || colorFondo;
+      const aviso = aplanada ? `Tenía fondo transparente: se le agregó fondo ${nombreColor}.` : null;
+      cambiarAviso(indice, aviso);
+      if (aplanada) setToast(aviso);
       setCambios(true);
     } catch {
       setToast("No se pudo subir la imagen");
@@ -120,6 +201,7 @@ export default function EspecialEditor({ slug }) {
       copia[indice] = null;
       return copia;
     });
+    cambiarAviso(indice, null);
     setCambios(true);
   };
 
@@ -205,6 +287,8 @@ export default function EspecialEditor({ slug }) {
     );
   }
 
+  const colorPersonalizado = !COLORES_FONDO.some((c) => c.id === colorFondo);
+
   return (
     <div style={{ padding: "20px 16px 110px", maxWidth: 820, margin: "0 auto" }}>
       {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
@@ -271,12 +355,59 @@ export default function EspecialEditor({ slug }) {
       {/* 3. Referencias */}
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="label">Imágenes de referencia (opcional, hasta 2)</div>
+
+        {/* Fondo para transparencias */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 8 }}>
+            Fondo para logos transparentes
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {COLORES_FONDO.map((c) => {
+              const activo = colorFondo === c.id;
+              return (
+                <button key={c.id} onClick={() => setColorFondo(c.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+                    padding: "8px 14px", borderRadius: 100, fontSize: 13,
+                    fontFamily: "var(--font-body)",
+                    background: activo ? "var(--tint-cyan)" : "transparent",
+                    border: `1px solid ${activo ? "var(--cyan)" : "var(--border)"}`,
+                    color: activo ? "var(--cyan)" : "var(--text-dim)",
+                  }}>
+                  <span style={{
+                    width: 16, height: 16, borderRadius: "50%", background: c.id,
+                    border: "1px solid var(--border-strong)",
+                  }} />
+                  {c.nombre}
+                </button>
+              );
+            })}
+            <label style={{
+              display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+              padding: "6px 12px", borderRadius: 100, fontSize: 13,
+              background: colorPersonalizado ? "var(--tint-cyan)" : "transparent",
+              border: `1px solid ${colorPersonalizado ? "var(--cyan)" : "var(--border)"}`,
+              color: colorPersonalizado ? "var(--cyan)" : "var(--text-dim)",
+            }}>
+              <input type="color" value={colorFondo}
+                onChange={(e) => setColorFondo(e.target.value)}
+                style={{ width: 22, height: 22, border: "none", padding: 0, background: "none", cursor: "pointer" }} />
+              Otro color
+            </label>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8, lineHeight: 1.5 }}>
+            Si la imagen tiene transparencia, se le agrega este fondo al subirla (la IA no ve bien los
+            fondos transparentes). Si cambias el color, vuelve a subir la imagen.
+          </div>
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
           {[0, 1].map((i) => (
             <RanuraReferencia
               key={i}
               titulo={i === 0 ? "Referencia 1 (2ª imagen)" : "Referencia 2 (3ª imagen)"}
               url={refs[i]}
+              aviso={avisos[i]}
               subiendo={subiendo === i}
               onSubir={() => (i === 0 ? inputRef1 : inputRef2).current?.click()}
               onQuitar={() => quitarReferencia(i)}
@@ -284,7 +415,7 @@ export default function EspecialEditor({ slug }) {
           ))}
         </div>
         <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 10, lineHeight: 1.6 }}>
-          PNG, JPG o WEBP, máximo {MAX_MB} MB. Los PNG mantienen su transparencia (ideal para textos o logos).
+          PNG, JPG o WEBP, máximo {MAX_MB} MB.
         </div>
       </div>
 
@@ -319,7 +450,7 @@ function Centro({ children }) {
 }
 
 /* Ranura para una imagen de referencia, con vista previa. */
-function RanuraReferencia({ titulo, url, subiendo, onSubir, onQuitar }) {
+function RanuraReferencia({ titulo, url, aviso, subiendo, onSubir, onQuitar }) {
   return (
     <div>
       <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 8 }}>{titulo}</div>
@@ -334,6 +465,11 @@ function RanuraReferencia({ titulo, url, subiendo, onSubir, onQuitar }) {
           }}>
             <img src={url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
           </div>
+          {aviso && (
+            <div style={{ fontSize: 11, color: "var(--cyan)", padding: "8px 10px 0", lineHeight: 1.4 }}>
+              {aviso}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 8, padding: 8 }}>
             <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={onSubir} disabled={subiendo}>
               {subiendo ? "Subiendo..." : "Cambiar"}
