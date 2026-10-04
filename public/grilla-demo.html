@@ -42,7 +42,14 @@
   .fila-cant { font-size: 12px; color: var(--tenue); }
   .carril { display: flex; gap: 10px; overflow-x: auto; padding: 0 16px; scroll-snap-type: x mandatory; scrollbar-width: none; }
   .carril::-webkit-scrollbar { display: none; }
-  .poster { position: relative; flex: 0 0 118px; height: 170px; border-radius: 14px; overflow: hidden; padding: 0; cursor: pointer; scroll-snap-align: start; text-align: left; color: #fff; border: 1px solid rgba(255,255,255,0.10); }
+  .carril-envoltura { position: relative; }
+  .carril-envoltura::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 64px; background: linear-gradient(90deg, rgba(10,10,15,0) 0%, rgba(10,10,15,0.92) 85%); pointer-events: none; transition: opacity 0.3s ease; }
+  .carril-envoltura.al-final::after { opacity: 0; }
+  .flecha { position: absolute; top: 50%; right: 8px; width: 34px; height: 34px; margin-top: -17px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(0,229,255,0.16); border: 1px solid rgba(0,229,255,0.55); color: var(--cian); z-index: 2; pointer-events: none; animation: latidoFlecha 1.4s ease-in-out infinite; transition: opacity 0.3s ease; }
+  .carril-envoltura.al-final .flecha { opacity: 0; }
+  @keyframes latidoFlecha { 0%, 100% { transform: translateX(0); opacity: 0.85; } 50% { transform: translateX(5px); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .flecha { animation: none; } }
+  .poster { position: relative; flex: 0 0 136px; height: 170px; border-radius: 14px; overflow: hidden; padding: 0; cursor: pointer; scroll-snap-align: start; text-align: left; color: #fff; border: 1px solid rgba(255,255,255,0.10); }
   .poster .rotulo { position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 10px 10px; background: linear-gradient(180deg, rgba(10,10,15,0) 0%, rgba(10,10,15,0.92) 60%); font-weight: 700; font-size: 13px; line-height: 1.2; }
 
   /* B: de dos en dos */
@@ -151,9 +158,33 @@
       var borde = cat === 'Divertidos' ? 'border-color: #e040fb;' : '';
       return '<button class="poster" style="background:' + tono(m[2], m[3]) + ';' + borde + '">' + silueta + '<span class="rotulo">' + m[0] + '</span></button>';
     }).join('');
-    htmlFilas += '<div class="fila"><div class="fila-cab"><span class="fila-titulo">' + titulosFila[cat] + '</span><span class="fila-cant">' + lista.length + ' modos</span></div><div class="carril">' + posters + '</div></div>';
+    var flecha = '<span class="flecha" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>';
+    htmlFilas += '<div class="fila"><div class="fila-cab"><span class="fila-titulo">' + titulosFila[cat] + '</span><span class="fila-cant">' + lista.length + ' modos · desliza</span></div><div class="carril-envoltura">' + flecha + '<div class="carril">' + posters + '</div></div></div>';
   });
   document.getElementById('filas').innerHTML = htmlFilas;
+
+  // Pistas de deslizamiento: flecha que se oculta al final y empujoncito inicial.
+  var carriles = document.querySelectorAll('#filas .carril');
+  carriles.forEach(function (carril, i) {
+    var envoltura = carril.parentNode;
+    function revisar() {
+      var alFinal = carril.scrollLeft + carril.clientWidth >= carril.scrollWidth - 8;
+      envoltura.classList.toggle('al-final', alFinal);
+    }
+    carril.addEventListener('scroll', revisar, { passive: true });
+    revisar();
+    var sinMovimiento = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!sinMovimiento && carril.scrollWidth > carril.clientWidth) {
+      setTimeout(function () {
+        carril.style.scrollSnapType = 'none';
+        carril.scrollTo({ left: 70, behavior: 'smooth' });
+        setTimeout(function () {
+          carril.scrollTo({ left: 0, behavior: 'smooth' });
+          setTimeout(function () { carril.style.scrollSnapType = ''; }, 600);
+        }, 650);
+      }, 700 + i * 250);
+    }
+  });
 
   // B: chips + carrusel
   var cats = ['Todos', 'Divertidos', 'Cine', 'Épocas', 'Animados', 'Fútbol'];
