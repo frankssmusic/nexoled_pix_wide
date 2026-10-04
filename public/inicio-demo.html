@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FUNfoto IA - Opciones de pantalla de inicio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root { --fondo: #0a0a0f; --texto: #f2f2f7; --tenue: #9a9aae; --cian: #00e5ff; --magenta: #e040fb; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--fondo); color: var(--texto); font-family: 'DM Sans', system-ui, sans-serif; }
+  button { font-family: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--cian); outline-offset: 2px; }
+  .app { max-width: 430px; margin: 0 auto; }
+
+  .selector { position: sticky; top: 0; z-index: 50; background: rgba(10,10,15,0.94); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 10px 0 10px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .selector-titulo { font-size: 12px; color: var(--tenue); padding: 0 16px 8px; }
+  .tabs { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 0 0 auto; min-height: 40px; padding: 0 14px; border-radius: 100px; border: 1px solid rgba(255,255,255,0.14); background: transparent; font-weight: 700; font-size: 13px; color: #c9c9d6; }
+  .tab.activa { border-color: var(--cian); background: rgba(0,229,255,0.12); color: var(--cian); }
+
+  .vista { display: none; position: relative; min-height: calc(100vh - 92px); padding: 22px 16px 28px; overflow: hidden; }
+  .vista.activa { display: block; }
+  .cab { text-align: center; position: relative; z-index: 2; margin-bottom: 18px; }
+  .presenta { font-size: 12px; color: var(--tenue); margin-bottom: 6px; }
+  .evento { font-family: 'Unbounded', sans-serif; font-weight: 800; font-size: 24px; line-height: 1.15; margin: 0; }
+
+  .btn-ia { position: relative; overflow: hidden; width: 100%; min-height: 60px; border: none; border-radius: 16px; font-size: 17px; font-weight: 800; color: #0a0a0f; background: linear-gradient(90deg, var(--cian), var(--magenta)); box-shadow: 0 0 34px rgba(224,64,251,0.35); display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .btn-ia::after, .brillo::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent); animation: barrido 3s ease-in-out infinite; }
+  .btn-normal { width: 100%; min-height: 50px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.04); font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; }
+  @keyframes barrido { 0% { transform: translateX(-120%) skewX(-20deg); } 60%, 100% { transform: translateX(320%) skewX(-20deg); } }
+
+  .silueta { position: absolute; left: 50%; transform: translateX(-50%); bottom: 0; width: 80%; height: auto; pointer-events: none; }
+  .placa { position: absolute; inset: 0; border-radius: inherit; }
+
+  /* 1. Dos puertas */
+  .puertas { display: flex; flex-direction: column; gap: 12px; position: relative; z-index: 2; }
+  .puerta { position: relative; overflow: hidden; height: 33vh; min-height: 220px; border-radius: 22px; padding: 22px; text-align: left; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; }
+  .puerta.foto { border: 1px solid rgba(0,229,255,0.5); background: linear-gradient(160deg, #0c2a33 0%, #0a0f16 100%); }
+  .puerta.ia { border: 1px solid var(--magenta); background: linear-gradient(160deg, #3a0f4a 0%, #120a22 60%, #06343d 100%); box-shadow: 0 0 40px rgba(224,64,251,0.25); }
+  .puerta .icono { width: 54px; height: 54px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: auto; }
+  .puerta.foto .icono { background: rgba(0,229,255,0.12); color: var(--cian); }
+  .puerta.ia .icono { background: rgba(224,64,251,0.16); color: #f0a6ff; }
+  .puerta .t1 { font-family: 'Unbounded', sans-serif; font-weight: 800; font-size: 22px; }
+  .puerta .t2 { font-size: 14px; color: #c9c9d6; }
+
+  /* 2 y 6. Tótem */
+  .totem { position: relative; z-index: 2; width: min(66vw, 250px); aspect-ratio: 0.5 / 1; margin: 0 auto; border-radius: 18px 18px 4px 4px; overflow: hidden; border: 1px solid rgba(0,229,255,0.5); box-shadow: 0 0 50px rgba(0,229,255,0.18); background: #0d0d16; }
+  .totem .placa { opacity: 0; transition: opacity 0.9s ease; }
+  .totem .placa.visible { opacity: 1; }
+  .totem .nombre-modo { position: absolute; left: 0; right: 0; bottom: 0; padding: 30px 12px 14px; text-align: center; background: linear-gradient(180deg, transparent, rgba(10,10,15,0.9)); font-family: 'Unbounded', sans-serif; font-weight: 600; font-size: 14px; }
+  .totem .marca-ia { position: absolute; top: 10px; left: 10px; padding: 4px 10px; border-radius: 100px; background: rgba(10,10,15,0.7); font-size: 11px; color: #f0a6ff; border: 1px solid rgba(224,64,251,0.5); }
+  .patas { display: flex; justify-content: center; gap: 26px; position: relative; z-index: 2; }
+  .patas span { width: 7px; height: 16px; border-radius: 0 0 3px 3px; background: rgba(0,229,255,0.25); }
+  .acciones { position: relative; z-index: 2; margin-top: 20px; }
+
+  /* 3. Antes / después */
+  .comparador { position: relative; z-index: 2; height: 52vh; min-height: 340px; border-radius: 22px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); user-select: none; touch-action: pan-y; }
+  .comparador .capa { position: absolute; inset: 0; }
+  .comparador .antes { background: linear-gradient(160deg, #3a3a44 0%, #16161c 100%); }
+  .comparador .despues { background: linear-gradient(160deg, #4a1460 0%, #140a26 55%, #06343d 100%); clip-path: inset(0 0 0 50%); }
+  .comparador .rotulo { position: absolute; top: 14px; padding: 5px 12px; border-radius: 100px; background: rgba(10,10,15,0.7); font-size: 12px; font-weight: 700; }
+  .comparador .linea { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; margin-left: -1.5px; background: #fff; box-shadow: 0 0 12px rgba(255,255,255,0.6); pointer-events: none; }
+  .comparador .tirador { position: absolute; top: 50%; left: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: #fff; color: #0a0a0f; display: flex; align-items: center; justify-content: center; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+  .comparador input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; margin: 0; }
+  .pista { text-align: center; font-size: 13px; color: var(--tenue); margin: 10px 0 0; position: relative; z-index: 2; }
+
+  /* 4. Marquesina */
+  .pregunta { font-family: 'Unbounded', sans-serif; font-weight: 800; font-size: 30px; line-height: 1.1; text-align: center; margin: 4px 0 20px; position: relative; z-index: 2; }
+  .cinta { overflow: hidden; margin: 0 -16px 10px; }
+  .cinta-pista { display: flex; gap: 10px; width: max-content; animation: correr 26s linear infinite; }
+  .cinta.inversa .cinta-pista { animation-direction: reverse; animation-duration: 30s; }
+  .mini { position: relative; flex: 0 0 104px; height: 140px; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); }
+  .mini span { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 8px; font-size: 11px; font-weight: 700; background: linear-gradient(180deg, transparent, rgba(10,10,15,0.9)); }
+  @keyframes correr { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* 5 y 6. Mosaico en vivo */
+  .mosaico { position: absolute; inset: 0; overflow: hidden; z-index: 0; }
+  .mosaico-pista { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 6px; animation: subir 40s linear infinite; }
+  .mosaico-pista div { position: relative; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; }
+  .mosaico::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,10,15,0.55) 0%, rgba(10,10,15,0.82) 45%, rgba(10,10,15,0.96) 100%); }
+  @keyframes subir { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+  .en-vivo { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 100px; background: rgba(10,10,15,0.7); border: 1px solid rgba(255,255,255,0.14); font-size: 12px; font-weight: 700; margin-top: 10px; }
+  .punto { width: 8px; height: 8px; border-radius: 50%; background: #3dff9a; box-shadow: 0 0 10px #3dff9a; animation: latido 1.6s ease-in-out infinite; }
+  @keyframes latido { 50% { opacity: 0.35; } }
+  .gran-titulo { font-family: 'Unbounded', sans-serif; font-weight: 800; font-size: 32px; line-height: 1.1; text-align: center; margin: 26vh 0 10px; position: relative; z-index: 2; }
+  .sub { text-align: center; color: #c9c9d6; font-size: 15px; margin: 0 0 24px; position: relative; z-index: 2; }
+
+  .simulador { position: relative; z-index: 3; display: flex; gap: 8px; justify-content: center; margin-bottom: 14px; }
+  .simulador button { min-height: 36px; padding: 0 12px; border-radius: 100px; border: 1px solid rgba(255,255,255,0.18); background: rgba(10,10,15,0.6); font-size: 12px; font-weight: 700; color: #c9c9d6; }
+  .simulador button.activa { border-color: #3dff9a; color: #3dff9a; }
+  .vacio .mosaico { display: none; }
+
+  .nota { position: relative; z-index: 2; margin-top: 22px; padding: 12px 14px; border-radius: 14px; border: 1px dashed rgba(255,255,255,0.18); font-size: 12px; color: var(--tenue); line-height: 1.55; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cinta-pista, .mosaico-pista, .btn-ia::after, .brillo::after, .punto { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="selector">
+    <div class="selector-titulo">Pantalla de inicio: prueba las 6 opciones</div>
+    <div class="tabs" role="tablist">
+      <button class="tab activa" data-v="1" role="tab" aria-selected="true">1. Dos puertas</button>
+      <button class="tab" data-v="2" role="tab" aria-selected="false">2. Tótem vivo</button>
+      <button class="tab" data-v="3" role="tab" aria-selected="false">3. Antes y después</button>
+      <button class="tab" data-v="4" role="tab" aria-selected="false">4. Marquesina</button>
+      <button class="tab" data-v="5" role="tab" aria-selected="false">5. Evento en vivo</button>
+      <button class="tab" data-v="6" role="tab" aria-selected="false">6. Fusión</button>
+    </div>
+  </div>
+
+  <!-- 1. Dos puertas -->
+  <section class="vista activa" id="v1">
+    <div class="cab"><div class="presenta">NexoLED presenta</div><h1 class="evento">Fiesta de Prueba</h1></div>
+    <div class="puertas">
+      <button class="puerta ia brillo">
+        <span class="icono"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg></span>
+        <span class="t1">Transfórmate con IA</span>
+        <span class="t2">Vampiro, explorador, Simpson y más</span>
+      </button>
+      <button class="puerta foto">
+        <span class="icono"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+        <span class="t1">Sube tu foto</span>
+        <span class="t2">Aparece tal cual en la pantalla del evento</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- 2. Tótem vivo -->
+  <section class="vista" id="v2">
+    <div class="cab"><div class="presenta">NexoLED presenta</div><h1 class="evento">Fiesta de Prueba</h1></div>
+    <div class="totem" data-totem>
+      <span class="marca-ia">Hecho con IA</span>
+      <span class="nombre-modo" data-nombre>Vampiro</span>
+    </div>
+    <div class="patas"><span></span><span></span></div>
+    <div class="acciones">
+      <button class="btn-ia">Transfórmate con IA</button>
+      <button class="btn-normal">Solo subir mi foto</button>
+    </div>
+  </section>
+
+  <!-- 3. Antes y después -->
+  <section class="vista" id="v3">
+    <div class="cab"><div class="presenta">NexoLED presenta</div><h1 class="evento">Fiesta de Prueba</h1></div>
+    <div class="comparador" id="comparador">
+      <div class="capa antes"><span class="rotulo" style="left: 14px">Tu selfie</span></div>
+      <div class="capa despues" id="despues"><span class="rotulo" style="right: 14px; color: #f0a6ff">Con IA</span></div>
+      <div class="linea" id="linea"></div>
+      <div class="tirador" id="tirador"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l-6 6 6 6"/><path d="M15 6l6 6-6 6"/></svg></div>
+      <input type="range" min="0" max="100" value="50" id="rango" aria-label="Comparar antes y después">
+    </div>
+    <p class="pista">Arrastra para ver la transformación</p>
+    <div class="acciones">
+      <button class="btn-ia">Quiero la mía</button>
+      <button class="btn-normal">Solo subir mi foto</button>
+    </div>
+  </section>
+
+  <!-- 4. Marquesina -->
+  <section class="vista" id="v4">
+    <div class="cab" style="margin-bottom: 8px"><div class="presenta">NexoLED presenta · Fiesta de Prueba</div></div>
+    <h1 class="pregunta">¿Quién quieres ser hoy?</h1>
+    <div class="cinta"><div class="cinta-pista" data-cinta="1"></div></div>
+    <div class="cinta inversa"><div class="cinta-pista" data-cinta="2"></div></div>
+    <div class="acciones">
+      <button class="btn-ia">Elegir mi personaje</button>
+      <button class="btn-normal">Solo subir mi foto</button>
+    </div>
+  </section>
+
+  <!-- 5. Evento en vivo -->
+  <section class="vista" id="v5">
+    <div class="mosaico"><div class="mosaico-pista" data-mosaico></div></div>
+    <div class="cab"><div class="presenta">NexoLED presenta</div><h1 class="evento">Fiesta de Prueba</h1>
+      <span class="en-vivo"><span class="punto"></span>24 fotos en la pantalla</span>
+    </div>
+    <h2 class="gran-titulo">Aparece en la pantalla</h2>
+    <p class="sub">Sube tu foto o transfórmate con IA</p>
+    <div class="acciones">
+      <button class="btn-ia">Transfórmate con IA</button>
+      <button class="btn-normal">Subir mi foto</button>
+    </div>
+  </section>
+
+  <!-- 6. Fusión -->
+  <section class="vista vacio" id="v6">
+    <div class="mosaico"><div class="mosaico-pista" data-mosaico></div></div>
+    <div class="simulador">
+      <button class="activa" data-sim="vacio">Inicio de la noche</button>
+      <button data-sim="lleno">Evento con fotos</button>
+    </div>
+    <div class="cab"><div class="presenta">NexoLED presenta</div><h1 class="evento">Fiesta de Prueba</h1>
+      <span class="en-vivo" id="contador6"><span class="punto"></span>Sé el primero en la pantalla</span>
+    </div>
+    <div class="totem" data-totem>
+      <span class="marca-ia">Hecho con IA</span>
+      <span class="nombre-modo" data-nombre>Vampiro</span>
+    </div>
+    <div class="patas"><span></span><span></span></div>
+    <div class="acciones">
+      <button class="btn-ia">Transfórmate con IA</button>
+      <button class="btn-normal">Solo subir mi foto</button>
+    </div>
+    <p class="nota">Al inicio el fondo es oscuro y el tótem muestra ejemplos. Cuando llegan fotos aprobadas, el fondo se llena con las del evento. Usa los botones de arriba para simularlo.</p>
+  </section>
+</div>
+
+<script>
+(function () {
+  var silueta = '<svg class="silueta" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="38" r="17" fill="rgba(255,255,255,0.18)"/><path d="M14 100 C14 66 86 66 86 100 Z" fill="rgba(255,255,255,0.18)"/></svg>';
+  function tono(a, b) { return 'linear-gradient(160deg, ' + a + ' 0%, ' + b + ' 100%)'; }
+
+  var ejemplos = [
+    ['Vampiro', '#4a0f2a', '#12060e'], ['Explorador jurásico', '#2a4a22', '#0c140a'],
+    ['Simpson', '#6a5a12', '#1a1606'], ['70s Disco', '#6a3a1a', '#1c0f08'],
+    ['Mago', '#3a2a5a', '#100c1c']
+  ];
+  var modos = [
+    ['Game of Thrones', '#4a3a2a', '#141016'], ['Peaky Style', '#2e2a26', '#0e0d10'], ['Breaking Bad', '#1f4a3a', '#0b1612'],
+    ['Harry Magic', '#3a2a5a', '#100c1c'], ['Jurassic Park', '#2a4a22', '#0c140a'], ['Super Hero', '#5a1f22', '#160909'],
+    ['Old School', '#5a4a2a', '#18130a'], ['70s Disco', '#6a3a1a', '#1c0f08'], ['Simpsons', '#6a5a12', '#1a1606'],
+    ['Barbie', '#6a1f4a', '#1c0a16'], ['Princesa', '#2a3a6a', '#0b1020'], ['Fútbol Fan', '#1a3a6a', '#080e1c']
+  ];
+
+  // Tótems con ejemplos que se van alternando
+  document.querySelectorAll('[data-totem]').forEach(function (totem) {
+    var nombre = totem.querySelector('[data-nombre]');
+    ejemplos.forEach(function (e, i) {
+      var p = document.createElement('div');
+      p.className = 'placa' + (i === 0 ? ' visible' : '');
+      p.style.background = tono(e[1], e[2]);
+      p.innerHTML = silueta;
+      totem.insertBefore(p, totem.firstChild);
+    });
+    var placas = totem.querySelectorAll('.placa');
+    var orden = Array.prototype.slice.call(placas).reverse();
+    var i = 0;
+    setInterval(function () {
+      orden[i].classList.remove('visible');
+      i = (i + 1) % orden.length;
+      orden[i].classList.add('visible');
+      nombre.textContent = ejemplos[i][0];
+    }, 2200);
+  });
+
+  // Antes y después
+  var rango = document.getElementById('rango');
+  function mover() {
+    var v = rango.value;
+    document.getElementById('despues').style.clipPath = 'inset(0 0 0 ' + v + '%)';
+    document.getElementById('linea').style.left = v + '%';
+    document.getElementById('tirador').style.left = v + '%';
+  }
+  rango.addEventListener('input', mover);
+  document.querySelector('#comparador .antes').insertAdjacentHTML('beforeend', silueta);
+  document.getElementById('despues').insertAdjacentHTML('beforeend', silueta);
+
+  // Marquesina (contenido duplicado para que el loop sea continuo)
+  function minis(lista) {
+    return lista.map(function (m) {
+      return '<div class="mini" style="background:' + tono(m[1], m[2]) + '">' + silueta + '<span>' + m[0] + '</span></div>';
+    }).join('');
+  }
+  var mitad1 = modos.slice(0, 6), mitad2 = modos.slice(6);
+  document.querySelector('[data-cinta="1"]').innerHTML = minis(mitad1) + minis(mitad1);
+  document.querySelector('[data-cinta="2"]').innerHTML = minis(mitad2) + minis(mitad2);
+
+  // Mosaico de fotos del evento (duplicado para el loop vertical)
+  var colores = [['#4a0f2a', '#12060e'], ['#1f4a3a', '#0b1612'], ['#3a2a5a', '#100c1c'], ['#6a3a1a', '#1c0f08'], ['#2a3a6a', '#0b1020'], ['#5a1f22', '#160909'], ['#6a5a12', '#1a1606'], ['#2e2a26', '#0e0d10'], ['#6a1f4a', '#1c0a16']];
+  var celdas = '';
+  for (var k = 0; k < 18; k++) {
+    var c = colores[k % colores.length];
+    celdas += '<div style="background:' + tono(c[0], c[1]) + '">' + silueta + '</div>';
+  }
+  document.querySelectorAll('[data-mosaico]').forEach(function (m) { m.innerHTML = celdas + celdas; });
+
+  // Simulador de la fusión
+  document.querySelectorAll('[data-sim]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('[data-sim]').forEach(function (x) { x.classList.remove('activa'); });
+      b.classList.add('activa');
+      var lleno = b.getAttribute('data-sim') === 'lleno';
+      document.getElementById('v6').classList.toggle('vacio', !lleno);
+      document.getElementById('contador6').innerHTML = '<span class="punto"></span>' + (lleno ? '24 fotos en la pantalla' : 'Sé el primero en la pantalla');
+    });
+  });
+
+  // Pestañas
+  var tabs = document.querySelectorAll('.tab');
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (x) { x.classList.remove('activa'); x.setAttribute('aria-selected', 'false'); });
+      t.classList.add('activa');
+      t.setAttribute('aria-selected', 'true');
+      document.querySelectorAll('.vista').forEach(function (v) { v.classList.remove('activa'); });
+      document.getElementById('v' + t.getAttribute('data-v')).classList.add('activa');
+      window.scrollTo(0, 0);
+    });
+  });
+})();
+</script>
+</body>
+</html>
