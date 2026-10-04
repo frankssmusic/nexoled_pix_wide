@@ -38,8 +38,10 @@ const OPCIONES_CONTENIDO = [
 const DETALLE_CONTENIDO = {
   grilla: "Sin Especial. El invitado ve la grilla de modos según el tier.",
   especial_grilla: "Especial destacado + grilla completa con Divertidos. Siempre Premium.",
-  solo_especial: "El invitado va directo al Especial, sin grilla.",
+  solo_especial: "El invitado va directo al Especial, sin grilla. Siempre Premium.",
 };
+
+const MENSAJE_BLOQUEO_PREMIUM = "Con Especial el evento siempre va con Premium";
 
 // Planes de fotos por persona.
 const PLANES_FOTOS = [
@@ -55,8 +57,8 @@ const clp = (n) => `$${Math.round(n).toLocaleString("es-CL")}`;
 const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 const MENSAJE_FALTAN_INVITADOS = "Ingresa el número de invitados para calcular la cuota y el precio";
 
-// Con Especial, todo se cotiza a precio GPT (el Especial siempre usa GPT Image).
-const tierParaCotizar = (tier, contenido) => (contenido && contenido !== "grilla" ? "premium" : tier);
+// Todo evento con Especial va con Premium (el Especial siempre usa GPT Image).
+const tieneEspecialContenido = (contenido) => !!contenido && contenido !== "grilla";
 
 // Precio sugerido (con IVA) de N fotos IA según el tier y el dólar.
 const precioSugerido = (n, tier, dolar) => {
@@ -279,7 +281,8 @@ export default function Admin() {
       if (existe) slug = `${slug}-${sufijoCorto()}`;
 
       const plan = planPorId(nuevoPlan);
-      const motor = nuevoContenido === "especial_grilla" ? "premium" : nuevoMotor;
+      const conEspecial = tieneEspecialContenido(nuevoContenido);
+      const motor = conEspecial ? "premium" : nuevoMotor;
 
       const clave = Math.random().toString(36).slice(2, 8);
       const { error: err } = await supabase.from("eventos").insert({
@@ -294,7 +297,7 @@ export default function Admin() {
         ia_habilitada: true,
         motor_ia: motor,
         contenido_ia: nuevoContenido,
-        especial_habilitado: nuevoContenido !== "grilla",
+        especial_habilitado: conEspecial,
         cuota_plan: plan.id,
         fotos_por_persona: plan.fotos,
         invitados: invitadosNum,
@@ -304,9 +307,9 @@ export default function Admin() {
       limpiarFormularioCrear();
       setMostrarCrear(false);
       setVerCerrados(false);
-      setToast(nuevoContenido === "grilla"
-        ? `Evento creado: ${slug}`
-        : `Evento creado: ${slug}. Recuerda configurar el Especial.`);
+      setToast(conEspecial
+        ? `Evento creado: ${slug}. Recuerda configurar el Especial.`
+        : `Evento creado: ${slug}`);
       cargarEventos();
     } catch {
       setToast("No se pudo crear el evento");
@@ -493,8 +496,8 @@ export default function Admin() {
 
   const cambiarTier = (ev, motor) => {
     if ((ev.motor_ia || "base") === motor) return;
-    if (ev.contenido_ia === "especial_grilla" && motor === "base") {
-      setToast("Especial + grilla siempre va con Premium");
+    if (tieneEspecialContenido(ev.contenido_ia) && motor === "base") {
+      setToast(MENSAJE_BLOQUEO_PREMIUM);
       return;
     }
     actualizar(ev, { motor_ia: motor },
@@ -503,12 +506,12 @@ export default function Admin() {
 
   const cambiarContenido = (ev, valor) => {
     if ((ev.contenido_ia || "grilla") === valor) return;
-    const campos = { contenido_ia: valor, especial_habilitado: valor !== "grilla" };
-    if (valor === "especial_grilla") campos.motor_ia = "premium";
+    const campos = { contenido_ia: valor, especial_habilitado: tieneEspecialContenido(valor) };
+    if (tieneEspecialContenido(valor)) campos.motor_ia = "premium";
     const mensajes = {
       grilla: "Especial apagado",
       especial_grilla: "Especial + grilla activado (Premium)",
-      solo_especial: "Solo Especial activado",
+      solo_especial: "Solo Especial activado (Premium)",
     };
     actualizar(ev, campos, mensajes[valor]);
   };
@@ -661,7 +664,8 @@ export default function Admin() {
   const planNuevo = planPorId(nuevoPlan);
   const invNuevoNum = parseInt(nuevosInvitados, 10) || 0;
   const cuotaNueva = invNuevoNum * planNuevo.fotos;
-  const motorNuevoVista = nuevoContenido === "especial_grilla" ? "premium" : nuevoMotor;
+  const nuevoConEspecial = tieneEspecialContenido(nuevoContenido);
+  const motorNuevoVista = nuevoConEspecial ? "premium" : nuevoMotor;
 
   return (
     <div style={{ padding: "20px 16px 60px", maxWidth: 900, margin: "0 auto" }}>
@@ -739,7 +743,7 @@ export default function Admin() {
           <div style={{ marginTop: 14 }}>
             <label className="label">Contenido IA</label>
             <SelectorPills opciones={OPCIONES_CONTENIDO} valor={nuevoContenido}
-              onChange={setNuevoContenido} destacado={nuevoContenido !== "grilla" ? nuevoContenido : null} />
+              onChange={setNuevoContenido} destacado={nuevoConEspecial ? nuevoContenido : null} />
             <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
               {DETALLE_CONTENIDO[nuevoContenido]}
             </div>
@@ -749,16 +753,16 @@ export default function Admin() {
             <label className="label">Tier contratado</label>
             <SelectorPills opciones={TIERS} valor={motorNuevoVista}
               onChange={(m) => {
-                if (nuevoContenido === "especial_grilla" && m === "base") {
-                  setToast("Especial + grilla siempre va con Premium");
+                if (nuevoConEspecial && m === "base") {
+                  setToast(MENSAJE_BLOQUEO_PREMIUM);
                   return;
                 }
                 setNuevoMotor(m);
               }}
               destacado="premium" />
-            {nuevoContenido === "especial_grilla" && (
+            {nuevoConEspecial && (
               <div style={{ fontSize: 11, color: "var(--magenta)", marginTop: 6 }}>
-                Bloqueado en Premium por tener Especial + grilla.
+                Bloqueado en Premium porque el evento tiene Especial.
               </div>
             )}
           </div>
@@ -783,8 +787,8 @@ export default function Admin() {
                 extra={0}
                 invitados={invNuevoNum}
                 fotosPorPersona={planNuevo.fotos}
-                tier={tierParaCotizar(motorNuevoVista, nuevoContenido)}
-                conEspecial={nuevoContenido !== "grilla"}
+                tier={motorNuevoVista}
+                conEspecial={nuevoConEspecial}
                 dolar={dolar.valor}
               />
             </div>
@@ -847,8 +851,8 @@ export default function Admin() {
             const camposEd = editando[ev.id] || {};
             const tierEv = ev.motor_ia === "premium" ? "premium" : "base";
             const contenidoEv = ev.contenido_ia || "grilla";
-            const tieneEspecial = contenidoEv !== "grilla";
-            const tierCot = tierParaCotizar(tierEv, contenidoEv);
+            const tieneEspecial = tieneEspecialContenido(contenidoEv);
+            const tierCot = tieneEspecial ? "premium" : tierEv;
 
             const planVista = planPorId(camposEd.plan ?? ev.cuota_plan);
             const planGuardado = planPorId(ev.cuota_plan);
@@ -1005,9 +1009,9 @@ export default function Admin() {
                         <label className="label">Tier contratado</label>
                         <SelectorPills opciones={TIERS} valor={tierEv}
                           onChange={(motor) => cambiarTier(ev, motor)} destacado="premium" />
-                        <div style={{ fontSize: 11, color: contenidoEv === "especial_grilla" ? "var(--magenta)" : "var(--text-faint)", marginTop: 6 }}>
-                          {contenidoEv === "especial_grilla"
-                            ? "Bloqueado en Premium por tener Especial + grilla."
+                        <div style={{ fontSize: 11, color: tieneEspecial ? "var(--magenta)" : "var(--text-faint)", marginTop: 6 }}>
+                          {tieneEspecial
+                            ? "Bloqueado en Premium porque el evento tiene Especial."
                             : tierEv === "premium"
                               ? "Premium: motor GPT Image + modos Divertidos. Se guarda al tocarlo."
                               : "Base: motor Seedream 5, sin modos Divertidos. Se guarda al tocarlo."}
