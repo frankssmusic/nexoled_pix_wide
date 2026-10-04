@@ -33,6 +33,9 @@ const MODOS_DIVERTIDOS = [
   { id: "cara_aplastada", nombre: "Cara Aplastada" },
 ];
 
+// Modo Especial: el prompt y las referencias los define el admin por evento.
+const MODO_ESPECIAL = "especial";
+
 const esModoDivertido = (modoId) => MODOS_DIVERTIDOS.some((m) => m.id === modoId);
 
 // Mensajes que van rotando mientras la IA genera la foto.
@@ -112,6 +115,12 @@ export default function Asistente({ evento }) {
   const mensaje = evento?.mensaje_subida || "Subir foto";
   const esPremium = evento?.motor_ia === "premium";
   const claveInstructivo = evento ? `funfoto_instructivo_${evento.id}` : null;
+
+  // Contenido IA del evento: grilla / especial_grilla / solo_especial.
+  const contenido = evento?.contenido_ia || "grilla";
+  const esSoloEspecial = contenido === "solo_especial";
+  const conEspecialEnGrilla = contenido === "especial_grilla";
+  const nombreEspecial = evento?.especial_label || "Especial de la noche";
 
   // Estado de la foto que se le informa al minijuego.
   let estadoFoto = "generando";
@@ -201,7 +210,20 @@ export default function Asistente({ evento }) {
     };
   }, [generandoIA]);
 
-  /* ---------- Instructivo (una vez por evento y celular) ---------- */
+  /* ---------- Entrada a FUNfoto IA ---------- */
+
+  // Con "Solo Especial" se salta el catálogo y va directo a la selfie.
+  const entrarAFunfoto = () => {
+    if (esSoloEspecial) {
+      modoParaSubidaRef.current = MODO_ESPECIAL;
+      setReusarFoto(false);
+      setStep("elegir-fuente-ia");
+    } else {
+      setStep("catalogo");
+    }
+  };
+
+  // Instructivo: una vez por evento y celular.
   const abrirFunfoto = () => {
     prepararAudio();
     let visto = false;
@@ -211,7 +233,7 @@ export default function Asistente({ evento }) {
       visto = false;
     }
     if (visto) {
-      setStep("catalogo");
+      entrarAFunfoto();
     } else {
       setMostrarInstructivo(true);
     }
@@ -224,10 +246,14 @@ export default function Asistente({ evento }) {
       // Si no se puede guardar, se mostrará de nuevo la próxima vez.
     }
     setMostrarInstructivo(false);
-    setStep("catalogo");
+    entrarAFunfoto();
   };
 
   const volverAlCatalogo = () => {
+    if (esSoloEspecial) {
+      setStep("subir");
+      return;
+    }
     const modoActual = modoParaSubidaRef.current || modoSeleccionado;
     setStep(esModoDivertido(modoActual) ? "catalogo-divertidos" : "catalogo");
   };
@@ -497,9 +523,9 @@ export default function Asistente({ evento }) {
     setStep("elegir-fuente-ia");
   };
 
-  // Otro modo: misma foto, eliges otro modo.
+  // Otro modo: misma foto, eliges otro modo (no existe en "Solo Especial").
   const otroModo = () => {
-    if (!file) { reiniciar(); return; }
+    if (!file || esSoloEspecial) { reiniciar(); return; }
     limpiarResultado();
     setReusarFoto(true);
     setStep("catalogo");
@@ -605,6 +631,21 @@ export default function Asistente({ evento }) {
       minHeight: "100vh", display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center", padding: "20px 16px 40px",
     }}>
+      <style>{`
+        @keyframes nexoPulsoEspecial {
+          0%, 100% { box-shadow: 0 0 22px rgba(224,64,251,0.35), 0 0 0 1px rgba(224,64,251,0.6); }
+          50% { box-shadow: 0 0 46px rgba(0,229,255,0.45), 0 0 0 1px rgba(0,229,255,0.8); }
+        }
+        @keyframes nexoBarridoEspecial {
+          0% { transform: translateX(-120%) skewX(-20deg); }
+          60%, 100% { transform: translateX(220%) skewX(-20deg); }
+        }
+        @keyframes nexoFlotarEmoji {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-4px) scale(1.12); }
+        }
+      `}</style>
+
       {mostrarInstructivo && <Instructivo onAceptar={cerrarInstructivo} />}
 
       {jugando && (
@@ -674,9 +715,13 @@ export default function Asistente({ evento }) {
 
             {evento?.ia_habilitada !== false && (
               <div style={{ marginTop: 26, paddingTop: 20, borderTop: "1px dashed var(--border)", textAlign: "center" }}>
-                <button className="btn btn-ghost btn-block" onClick={abrirFunfoto}>
-                  FUNfoto IA
-                </button>
+                {esSoloEspecial ? (
+                  <TarjetaEspecial nombre={nombreEspecial} onClick={abrirFunfoto} compacta />
+                ) : (
+                  <button className="btn btn-ghost btn-block" onClick={abrirFunfoto}>
+                    FUNfoto IA
+                  </button>
+                )}
               </div>
             )}
 
@@ -692,6 +737,12 @@ export default function Asistente({ evento }) {
             </div>
 
             {avisoMismaFoto || consejoSelfie}
+
+            {conEspecialEnGrilla && (
+              <div style={{ marginBottom: 16 }}>
+                <TarjetaEspecial nombre={nombreEspecial} onClick={() => elegirModo(MODO_ESPECIAL)} />
+              </div>
+            )}
 
             {esPremium && (
               <button
@@ -813,7 +864,9 @@ export default function Asistente({ evento }) {
         {step === "elegir-fuente-ia" && (
           <div className="rise">
             <div style={{ textAlign: "center", marginBottom: 24 }}>
-              <div className="eyebrow" style={{ marginBottom: 6 }}>FUNfoto IA</div>
+              <div className="eyebrow" style={{ marginBottom: 6, color: modoParaSubidaRef.current === MODO_ESPECIAL ? "var(--magenta)" : undefined }}>
+                {modoParaSubidaRef.current === MODO_ESPECIAL ? `${EMOJI_BRILLO} ${nombreEspecial}` : "FUNfoto IA"}
+              </div>
               <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
             </div>
             {consejoSelfie}
@@ -826,7 +879,7 @@ export default function Asistente({ evento }) {
               Elegir de galería
             </button>
             <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={volverAlCatalogo}>
-              Volver al catálogo
+              {esSoloEspecial ? "Volver" : "Volver al catálogo"}
             </button>
             <Banner />
           </div>
@@ -905,7 +958,9 @@ export default function Asistente({ evento }) {
                   </p>
                   {intentosIA >= MAX_INTENTOS_IA && (
                     <p style={{ color: "var(--warn, #f5a623)", fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
-                      Ya usaste tus {MAX_INTENTOS_IA} intentos con este modo. Puedes usar esta foto, probar otro modo u otra selfie.
+                      {esSoloEspecial
+                        ? `Ya usaste tus ${MAX_INTENTOS_IA} intentos. Puedes usar esta foto o probar con otra selfie.`
+                        : `Ya usaste tus ${MAX_INTENTOS_IA} intentos con este modo. Puedes usar esta foto, probar otro modo u otra selfie.`}
                     </p>
                   )}
 
@@ -923,9 +978,11 @@ export default function Asistente({ evento }) {
                     <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otraSelfie} disabled={confirmandoIA}>
                       Otra selfie
                     </button>
-                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otroModo} disabled={confirmandoIA}>
-                      Otro modo
-                    </button>
+                    {!esSoloEspecial && (
+                      <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otroModo} disabled={confirmandoIA}>
+                        Otro modo
+                      </button>
+                    )}
                   </div>
                 </>
               )}
@@ -964,7 +1021,9 @@ export default function Asistente({ evento }) {
                       </button>
                       <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                         <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otraSelfie}>Otra selfie</button>
-                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otroModo}>Otro modo</button>
+                        {!esSoloEspecial && (
+                          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={otroModo}>Otro modo</button>
+                        )}
                       </div>
                     </>
                   )}
@@ -1046,6 +1105,44 @@ export default function Asistente({ evento }) {
         )}
       </div>
     </div>
+  );
+}
+
+/* Tarjeta destacada del Especial: brillo que pulsa y un destello que la recorre. */
+function TarjetaEspecial({ nombre, onClick, compacta }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        position: "relative", overflow: "hidden", width: "100%", cursor: "pointer",
+        padding: compacta ? "20px 16px" : "30px 18px",
+        borderRadius: 18, border: "1px solid var(--magenta)",
+        background: "linear-gradient(135deg, rgba(224,64,251,0.30) 0%, rgba(20,10,40,0.95) 45%, rgba(0,229,255,0.22) 100%)",
+        animation: "nexoPulsoEspecial 2.2s ease-in-out infinite",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+        textAlign: "center", fontFamily: "var(--font-body)",
+      }}
+    >
+      {/* Destello que cruza la tarjeta */}
+      <span style={{
+        position: "absolute", top: 0, bottom: 0, left: 0, width: "35%",
+        background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)",
+        animation: "nexoBarridoEspecial 3.2s ease-in-out infinite",
+        pointerEvents: "none",
+      }} />
+      <span style={{ fontSize: compacta ? 26 : 34, animation: "nexoFlotarEmoji 2.2s ease-in-out infinite" }}>
+        {EMOJI_BRILLO}
+      </span>
+      <span className="eyebrow" style={{ color: "var(--magenta)", position: "relative" }}>
+        Especial de la noche
+      </span>
+      <span className="display" style={{ fontSize: compacta ? 21 : 26, color: "#fff", lineHeight: 1.15, position: "relative" }}>
+        {nombre}
+      </span>
+      <span style={{ fontSize: 12.5, color: "var(--text-dim)", position: "relative" }}>
+        Creado exclusivamente para esta noche
+      </span>
+    </button>
   );
 }
 

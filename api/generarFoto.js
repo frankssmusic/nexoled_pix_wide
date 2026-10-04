@@ -9,24 +9,23 @@
 // api/consultarFoto.js (cada ~3 seg) hasta que la imagen este lista.
 //
 // RUTEO POR MOTOR (Oct 2026):
-// - Simpsons y Barbie SIEMPRE usan Seedream 4.5, sin importar el tier del
-//   evento.
-// - Futbol Fan Argentina (futbol_fan_4) SIEMPRE usa Seedream 5.0, sin
-//   importar el tier del evento.
-// - Los modos del bloque DIVERTIDOS SIEMPRE usan GPT Image 2 (medium) y
-//   solo estan disponibles en eventos premium. Si un evento base intenta
-//   usarlos, el servidor rechaza la solicitud.
+// - ESPECIAL: usa el prompt y hasta 2 imagenes de referencia guardados en el
+//   evento, SIEMPRE con GPT Image. Orden de imagenes: selfie, ref 1, ref 2.
+// - Simpsons y Barbie SIEMPRE usan Seedream 4.5.
+// - Futbol Fan Argentina (futbol_fan_4) SIEMPRE usa Seedream 5.0.
+// - Los modos DIVERTIDOS SIEMPRE usan GPT Image 2 (medium) y solo estan
+//   disponibles en eventos premium.
 // - Todo lo demas usa evento.motor_ia: 'base' -> Seedream 5.0 Pro (1k),
 //   'premium' -> GPT Image 2 (medium).
 //
+// CONTENIDO IA DEL EVENTO:
+// - 'grilla': sin Especial.
+// - 'especial_grilla': Especial + grilla.
+// - 'solo_especial': solo se permite el Especial.
+//
 // CUOTA (Oct 2026):
-// - El contador vive en eventos.ia_usadas, no en la tabla fotos. Asi borrar
-//   fotos o borradores no reinicia la cuota.
-// - Antes de llamar a WaveSpeed se RESERVA el cupo con la funcion SQL
-//   reservar_foto_ia, que suma 1 solo si queda espacio, todo de una vez.
-//   Esto evita que varias personas generando al mismo tiempo se pasen.
-// - Si el evento no tiene cuota definida, la funcion SQL aplica un tope
-//   de seguridad de 30.
+// - Una sola cuota sumada para todo (grilla y Especial), en eventos.ia_usadas.
+// - Antes de llamar a WaveSpeed se RESERVA el cupo con reservar_foto_ia.
 // - Si WaveSpeed rechaza la tarea, se devuelve el cupo con liberar_foto_ia.
 
 const { createClient } = require('@supabase/supabase-js');
@@ -66,6 +65,8 @@ const MOTORES = {
   },
 };
 
+const MODO_ESPECIAL = 'especial';
+
 // Modos que SIEMPRE usan Seedream 4.5, sin importar el tier contratado.
 const MODOS_FIJOS_SEEDREAM_45 = ['simpsons', 'barbie'];
 
@@ -89,8 +90,16 @@ const MODOS_DIVERTIDOS = [
 const MENSAJE_CUOTA_AGOTADA =
   'Este evento llegó a su límite de fotos. Consulta con el organizador para seguir usando FUNfoto IA.';
 
+// Los mensajes con "no está disponible" tampoco muestran "Intentar de nuevo".
+const MENSAJE_ESPECIAL_NO_ACTIVO = 'El Especial no está disponible en este evento';
+const MENSAJE_ESPECIAL_SIN_PROMPT = 'El Especial de este evento no está disponible todavía. Avisa al organizador.';
+const MENSAJE_SOLO_ESPECIAL = 'Este modo no está disponible en este evento';
+
 // Decide que motor usar segun el modo pedido y el tier contratado.
 function resolverMotor(modo, motorDelEvento) {
+  if (modo === MODO_ESPECIAL) {
+    return 'gpt_image_medium';
+  }
   if (MODOS_FIJOS_SEEDREAM_45.includes(modo)) {
     return 'seedream_4_5';
   }
@@ -124,18 +133,24 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  const variante = getPromptAleatorio(modo);
-  if (!variante) {
-    return res.status(400).json({
-      error: `El modo "${modo}" todavía no está disponible`,
-    });
+  const esEspecial = modo === MODO_ESPECIAL;
+
+  // Para los modos de la grilla, el prompt sale del catalogo (lib/prompts.js).
+  let prompt = null;
+  let imagenesParaWaveSpeed = null;
+
+  if (!esEspecial) {
+    const variante = getPromptAleatorio(modo);
+    if (!variante) {
+      return res.status(400).json({
+        error: `El modo "${modo}" todavía no está disponible`,
+      });
+    }
+    prompt = variante.prompt;
+    imagenesParaWaveSpeed = variante.refFija
+      ? [fotoUrl, `${DOMINIO_BASE}/referencias/${variante.refFija}`]
+      : [fotoUrl];
   }
-
-  const { prompt, refFija } = variante;
-
-  const imagenesParaWaveSpeed = refFija
-    ? [fotoUrl, `${DOMINIO_BASE}/referencias/${refFija}`]
-    : [fotoUrl];
 
   const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -143,11 +158,11 @@ module.exports = async function handler(req, res) {
   );
 
   // ---------------------------------------------------------------------
-  // Control de acceso: IA habilitada + motor contratado.
+  // Control de acceso: IA habilitada, contenido del evento y tier.
   // ---------------------------------------------------------------------
   const { data: evento, error: errorEvento } = await supabase
     .from('eventos')
-    .select('ia_habilitada, motor_ia')
+    .select('ia_habilitada, motor_ia, contenido_ia, especial_prompt, especial_ref_url, especial_ref_url_2')
     .eq('id', eventoId)
     .single();
 
@@ -159,6 +174,21 @@ module.exports = async function handler(req, res) {
     return res.status(403).json({
       error: 'FUNfoto IA no está disponible para este evento',
     });
+  }
+
+  const contenido = evento.contenido_ia || 'grilla';
+
+  if (esEspecial) {
+    if (contenido === 'grilla') {
+      return res.status(403).json({ error: MENSAJE_ESPECIAL_NO_ACTIVO });
+    }
+    if (!evento.especial_prompt || !evento.especial_prompt.trim()) {
+      return res.status(403).json({ error: MENSAJE_ESPECIAL_SIN_PROMPT });
+    }
+    prompt = evento.especial_prompt;
+    imagenesParaWaveSpeed = [fotoUrl, evento.especial_ref_url, evento.especial_ref_url_2].filter(Boolean);
+  } else if (contenido === 'solo_especial') {
+    return res.status(403).json({ error: MENSAJE_SOLO_ESPECIAL });
   }
 
   // Los modos DIVERTIDOS solo estan incluidos en el plan premium.
