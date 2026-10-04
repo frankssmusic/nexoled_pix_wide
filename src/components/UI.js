@@ -1,15 +1,26 @@
 import { useEffect } from "react";
 import Icon from "./Icons";
 
-/* Logo NexoPix — Syne, con degradado de marca */
+/* Logo NexoPix: imagen cromada azul y rubí (public/nexopix_logo.webp).
+   La mezcla "screen" hace desaparecer el fondo negro de la imagen
+   sobre los fondos oscuros de la app. */
+const LOGO_URL = "/nexopix_logo.png";
+const LOGO_PROPORCION = 1200 / 287;
+
 export function Logo({ size = 22, sub = true }) {
+  const alto = Math.round(size * 1.7);
+  const ancho = Math.round(alto * LOGO_PROPORCION);
   return (
-    <div style={{ lineHeight: 1 }}>
-      <div className="display grad-text" style={{ fontSize: size, letterSpacing: "-0.03em" }}>
-        NexoPix
-      </div>
+    <div style={{ lineHeight: 1, display: "inline-flex", flexDirection: "column", alignItems: "center" }}>
+      <img
+        src={LOGO_URL}
+        alt="NexoPix"
+        width={ancho}
+        height={alto}
+        style={{ display: "block", width: ancho, height: alto, mixBlendMode: "screen" }}
+      />
       {sub && (
-        <div className="eyebrow" style={{ fontSize: 9, marginTop: 3, color: "var(--text-faint)" }}>
+        <div className="eyebrow" style={{ fontSize: 9, marginTop: 2, color: "var(--text-faint)" }}>
           Wide
         </div>
       )}
