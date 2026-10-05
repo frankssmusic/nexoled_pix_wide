@@ -767,8 +767,8 @@ export default function Admin() {
         <div className="card rise" style={{
           marginBottom: 28,
           border: "1px solid var(--magenta)",
-          background: "linear-gradient(135deg, rgba(224,64,251,0.07), rgba(0,229,255,0.03))",
-          boxShadow: "0 0 30px rgba(224,64,251,0.10)",
+          background: "linear-gradient(135deg, rgba(var(--magenta-rgb),0.07), rgba(var(--cyan-rgb),0.03))",
+          boxShadow: "0 0 30px rgba(var(--magenta-rgb),0.10)",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div>
@@ -875,7 +875,7 @@ export default function Admin() {
               cursor: "pointer", padding: "8px 16px", borderRadius: 100, fontSize: 13,
               fontFamily: "var(--font-body)", fontWeight: 500,
               background: verCerrados === val ? "var(--tint-cyan)" : "transparent",
-              border: `1px solid ${verCerrados === val ? "rgba(0,229,255,0.22)" : "var(--border)"}`,
+              border: `1px solid ${verCerrados === val ? "rgba(var(--cyan-rgb),0.22)" : "var(--border)"}`,
               color: verCerrados === val ? "var(--cyan)" : "var(--text-dim)",
             }}>
             {label}
@@ -929,7 +929,7 @@ export default function Admin() {
                         </span>
                       )}
                       {tieneEspecial && (
-                        <span className="chip" style={{ color: "#fff", borderColor: "var(--magenta)", background: "rgba(224,64,251,0.18)" }}>
+                        <span className="chip" style={{ color: "#fff", borderColor: "var(--magenta)", background: "rgba(var(--magenta-rgb),0.18)" }}>
                           {contenidoEv === "solo_especial" ? "Solo Especial" : "Especial"}
                         </span>
                       )}
@@ -1035,14 +1035,14 @@ export default function Admin() {
                           <div style={{
                             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
                             marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-sm)",
-                            border: "1px solid var(--magenta)", background: "rgba(224,64,251,0.06)", flexWrap: "wrap",
+                            border: "1px solid var(--magenta)", background: "rgba(var(--magenta-rgb),0.06)", flexWrap: "wrap",
                           }}>
                             <div style={{ fontSize: 13, color: "var(--text)" }}>
                               {ev.especial_label
                                 ? <>Tarjeta: <b>{ev.especial_label}</b></>
                                 : "Falta configurar el Especial"}
                               {!ev.especial_prompt && (
-                                <div style={{ fontSize: 11, color: "var(--warn, #f5a623)", marginTop: 3 }}>
+                                <div style={{ fontSize: 11, color: "var(--warn)", marginTop: 3 }}>
                                   Sin prompt: el Especial no funcionará hasta configurarlo.
                                 </div>
                               )}
@@ -1440,7 +1440,7 @@ export default function Admin() {
                                 display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
                                 padding: "10px 12px", borderRadius: "var(--r-sm)", cursor: "pointer",
                                 background: sel ? "var(--tint-cyan)" : "var(--bg)",
-                                border: `1px solid ${sel ? "rgba(0,229,255,0.3)" : "var(--border)"}`,
+                                border: `1px solid ${sel ? "rgba(var(--cyan-rgb),0.3)" : "var(--border)"}`,
                                 textAlign: "left", width: "100%", fontFamily: "var(--font-body)",
                               }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
@@ -1550,7 +1550,7 @@ function SelectorPills({ opciones, valor, onChange, destacado }) {
             style={{
               flex: 1, minWidth: 90, cursor: "pointer", padding: "10px 12px", borderRadius: 100, fontSize: 13,
               fontFamily: "var(--font-body)", fontWeight: 500,
-              background: activo ? (esDestacado ? "rgba(224,64,251,0.12)" : "var(--tint-cyan)") : "transparent",
+              background: activo ? (esDestacado ? "rgba(var(--magenta-rgb),0.12)" : "var(--tint-cyan)") : "transparent",
               border: `1px solid ${activo ? colorActivo : "var(--border)"}`,
               color: activo ? colorActivo : "var(--text-dim)",
             }}

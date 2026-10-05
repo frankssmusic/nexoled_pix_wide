@@ -495,7 +495,7 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
             style={{
               cursor: "pointer", padding: "7px 14px", fontSize: 13,
               background: filtro === k ? "var(--tint-cyan)" : "transparent",
-              border: `1px solid ${filtro === k ? "rgba(0,229,255,0.22)" : "var(--border)"}`,
+              border: `1px solid ${filtro === k ? "rgba(var(--cyan-rgb),0.22)" : "var(--border)"}`,
               color: filtro === k ? "var(--cyan)" : "var(--text-dim)",
               fontFamily: "var(--font-body)",
             }}>

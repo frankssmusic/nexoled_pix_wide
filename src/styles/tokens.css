@@ -5,6 +5,8 @@
    cambie sin tocar otros archivos:
    --cyan    = azul zafiro eléctrico
    --magenta = rubí eléctrico
+   --cyan-rgb y --magenta-rgb = los mismos colores en números,
+   para transparencias: rgba(var(--cyan-rgb), 0.3)
    ========================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@400;500;700&display=swap');
@@ -21,11 +23,15 @@
   --text-dim:      #9a96ae;
   --text-faint:    #5c5872;
 
+  /* Los mismos colores de marca en números (para transparencias) */
+  --cyan-rgb:      46, 197, 255;
+  --magenta-rgb:   255, 10, 84;
+
   --border:        rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.15);
 
-  --tint-cyan:     rgba(46, 197, 255, 0.12);
-  --tint-magenta:  rgba(255, 10, 84, 0.12);
+  --tint-cyan:     rgba(var(--cyan-rgb), 0.12);
+  --tint-magenta:  rgba(var(--magenta-rgb), 0.12);
 
   --ok:            #00e58a;
   --warn:          #ffa726;
@@ -37,8 +43,8 @@
   --grad-flat: linear-gradient(120deg, #2ec5ff 0%, #ff0a54 100%);
 
   /* Resplandores de neón */
-  --glow-cyan:    0 0 18px rgba(46, 197, 255, 0.45);
-  --glow-magenta: 0 0 18px rgba(255, 10, 84, 0.45);
+  --glow-cyan:    0 0 18px rgba(var(--cyan-rgb), 0.45);
+  --glow-magenta: 0 0 18px rgba(var(--magenta-rgb), 0.45);
 
   /* --- Tipografía --- */
   --font-display: 'Syne', sans-serif;
@@ -115,7 +121,7 @@ body {
   background-size: 200% 100%;
   color: #ffffff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
-  box-shadow: 0 0 16px rgba(46, 197, 255, 0.35), 0 0 30px rgba(255, 10, 84, 0.25),
+  box-shadow: 0 0 16px rgba(var(--cyan-rgb), 0.35), 0 0 30px rgba(var(--magenta-rgb), 0.25),
               inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -2px 0 rgba(0, 0, 0, 0.2);
   animation: reflejoMetal 6s ease-in-out infinite;
 }
@@ -129,7 +135,7 @@ body {
   pointer-events: none;
 }
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 0 22px rgba(46, 197, 255, 0.55), 0 0 40px rgba(255, 10, 84, 0.35),
+  box-shadow: 0 0 22px rgba(var(--cyan-rgb), 0.55), 0 0 40px rgba(var(--magenta-rgb), 0.35),
               inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -2px 0 rgba(0, 0, 0, 0.2);
 }
 .btn-primary:disabled::after { animation: none; }
@@ -179,8 +185,8 @@ body {
   font-weight: 500;
   letter-spacing: 0.04em;
 }
-.chip-cyan    { background: var(--tint-cyan);    color: var(--cyan);    border: 1px solid rgba(46,197,255,0.28); }
-.chip-magenta { background: var(--tint-magenta); color: var(--magenta); border: 1px solid rgba(255,10,84,0.28); }
+.chip-cyan    { background: var(--tint-cyan);    color: var(--cyan);    border: 1px solid rgba(var(--cyan-rgb), 0.28); }
+.chip-magenta { background: var(--tint-magenta); color: var(--magenta); border: 1px solid rgba(var(--magenta-rgb), 0.28); }
 .chip-ok      { background: rgba(0,229,138,0.10);  color: var(--ok);     border: 1px solid rgba(0,229,138,0.22); }
 .chip-warn    { background: rgba(255,167,38,0.10); color: var(--warn);   border: 1px solid rgba(255,167,38,0.22); }
 .chip-danger  { background: rgba(255,69,105,0.10); color: var(--danger); border: 1px solid rgba(255,69,105,0.22); }

@@ -5,8 +5,9 @@ import Icon from "../components/Icons";
 import { Vacio, Logo } from "../components/UI";
 import MiniJuego from "../components/MiniJuego";
 
-// Bloque DIVERTIDOS: filtros tipo Snapchat, solo visibles en eventos premium.
-// El servidor (api/generarFoto.js) también los bloquea si el evento no es premium.
+// Bloque DIVERTIDOS: filtros tipo Snapchat, solo disponibles en eventos premium.
+// En eventos Base se muestran con candado. El servidor (api/generarFoto.js)
+// también los bloquea si el evento no es premium.
 const MODOS_DIVERTIDOS = [
   { id: "ojos_saltones", nombre: "Ojos Saltones" },
   { id: "maquillaje_tia", nombre: "El Gran Maquillaje" },
@@ -91,16 +92,17 @@ const MENSAJE_ERROR_REINTENTABLE =
 const MAX_CONSULTAS = 90;
 
 // Consejos del instructivo. Los emojis van como códigos para que no se
-// corrompan al copiar el archivo.
+// corrompan al copiar el archivo. El color usa las variables de la paleta.
 const CONSEJOS_INSTRUCTIVO = [
-  { emoji: "\u{1F4A1}", fuerte: "Busca buena luz", resto: " para tu selfie", color: "0,229,255" },
-  { emoji: "\u{1F465}", fuerte: "Sugerencia:", resto: " máximo 2 personas para un resultado óptimo", color: "224,64,251" },
-  { emoji: "\u{23F3}", fuerte: "El modo HD puede tardar hasta 4 minutos,", resto: " ten paciencia", color: "0,229,255" },
-  { emoji: "\u{1F4F1}", fuerte: "No cierres la app", resto: " ni bloquees el celular mientras se genera", color: "224,64,251" },
+  { emoji: "\u{1F4A1}", fuerte: "Busca buena luz", resto: " para tu selfie", color: "var(--cyan-rgb)" },
+  { emoji: "\u{1F465}", fuerte: "Sugerencia:", resto: " máximo 2 personas para un resultado óptimo", color: "var(--magenta-rgb)" },
+  { emoji: "\u{23F3}", fuerte: "El modo HD puede tardar hasta 4 minutos,", resto: " ten paciencia", color: "var(--cyan-rgb)" },
+  { emoji: "\u{1F4F1}", fuerte: "No cierres la app", resto: " ni bloquees el celular mientras se genera", color: "var(--magenta-rgb)" },
 ];
 const EMOJI_BRILLO = "\u{2728}";
 const EMOJI_CONTROL = "\u{1F3AE}";
 const EMOJI_LUZ = "\u{1F4A1}";
+const EMOJI_CANDADO = "\u{1F512}";
 
 const esCelular = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
 
@@ -150,9 +152,16 @@ export default function Asistente({ evento }) {
   const conEspecialEnGrilla = contenido === "especial_grilla";
   const nombreEspecial = evento?.especial_label || "Especial de la noche";
 
-  // Filas del catálogo según el tier (Divertidos solo en Premium).
-  const filasVisibles = FILAS_CATALOGO.filter((f) => !f.premium || esPremium);
-  const modosMarquesina = filasVisibles.flatMap((f) => f.modos);
+  // Marquesina: solo los modos que el invitado puede usar en este evento.
+  const modosMarquesina = FILAS_CATALOGO
+    .filter((f) => !f.premium || esPremium)
+    .flatMap((f) => f.modos);
+
+  // Catálogo: en Premium, Divertidos va primero y destacado.
+  // En Base, Divertidos va al final con candado (para mostrar el upgrade).
+  const filasCatalogo = esPremium
+    ? FILAS_CATALOGO
+    : [...FILAS_CATALOGO.filter((f) => !f.premium), ...FILAS_CATALOGO.filter((f) => f.premium)];
 
   // Estado de la foto que se le informa al minijuego.
   let estadoFoto = "generando";
@@ -658,8 +667,8 @@ export default function Asistente({ evento }) {
     }}>
       <style>{`
         @keyframes nexoPulsoEspecial {
-          0%, 100% { box-shadow: 0 0 22px rgba(224,64,251,0.35), 0 0 0 1px rgba(224,64,251,0.6); }
-          50% { box-shadow: 0 0 46px rgba(0,229,255,0.45), 0 0 0 1px rgba(0,229,255,0.8); }
+          0%, 100% { box-shadow: 0 0 22px rgba(var(--magenta-rgb),0.35), 0 0 0 1px rgba(var(--magenta-rgb),0.6); }
+          50% { box-shadow: 0 0 46px rgba(var(--cyan-rgb),0.45), 0 0 0 1px rgba(var(--cyan-rgb),0.8); }
         }
         @keyframes nexoBarridoEspecial {
           0% { transform: translateX(-120%) skewX(-20deg); }
@@ -828,13 +837,14 @@ export default function Asistente({ evento }) {
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-              {filasVisibles.map((fila, i) => (
+              {filasCatalogo.map((fila, i) => (
                 <FilaModos
                   key={fila.id}
                   idFila={fila.id}
                   titulo={fila.titulo}
                   modos={fila.modos}
-                  destacada={fila.premium === true}
+                  destacada={fila.premium === true && esPremium}
+                  bloqueada={fila.premium === true && !esPremium}
                   indice={i}
                   onElegir={elegirModo}
                 />
@@ -920,7 +930,7 @@ export default function Asistente({ evento }) {
                   <style>{`@keyframes nexoGirar { to { transform: rotate(360deg); } }`}</style>
                   <div style={{
                     width: 46, height: 46, margin: "0 auto 16px", borderRadius: "50%",
-                    border: "3px solid rgba(0,229,255,0.15)",
+                    border: "3px solid rgba(var(--cyan-rgb),0.15)",
                     borderTopColor: "var(--cyan)",
                     animation: "nexoGirar 0.9s linear infinite",
                   }} />
@@ -938,10 +948,10 @@ export default function Asistente({ evento }) {
                     onClick={() => { prepararAudio(); setJugando(true); }}
                     style={{
                       width: "100%", marginTop: 18, padding: "14px 16px", borderRadius: 14,
-                      border: "1px solid rgba(224,64,251,0.55)", cursor: "pointer",
+                      border: "1px solid rgba(var(--magenta-rgb),0.55)", cursor: "pointer",
                       fontSize: 15, fontWeight: 700, fontFamily: "var(--font-body)", color: "#fff",
-                      background: "linear-gradient(135deg, rgba(224,64,251,0.22), rgba(0,229,255,0.14))",
-                      boxShadow: "0 0 26px rgba(224,64,251,0.2)",
+                      background: "linear-gradient(135deg, rgba(var(--magenta-rgb),0.22), rgba(var(--cyan-rgb),0.14))",
+                      boxShadow: "0 0 26px rgba(var(--magenta-rgb),0.2)",
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                     }}
                   >
@@ -959,7 +969,7 @@ export default function Asistente({ evento }) {
                     Intento {intentosIA} de {MAX_INTENTOS_IA}
                   </p>
                   {intentosIA >= MAX_INTENTOS_IA && (
-                    <p style={{ color: "var(--warn, #f5a623)", fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
+                    <p style={{ color: "var(--warn)", fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
                       {esSoloEspecial
                         ? `Ya usaste tus ${MAX_INTENTOS_IA} intentos. Puedes usar esta foto o probar con otra selfie.`
                         : `Ya usaste tus ${MAX_INTENTOS_IA} intentos con este modo. Puedes usar esta foto, probar otro modo u otra selfie.`}
@@ -1243,10 +1253,13 @@ function Marquesina({ modos, onClick }) {
 
 /* Fila deslizable de modos, con pistas de deslizamiento:
    tarjeta asomada, degradado + flecha que late (se puede tocar en computador),
-   empujoncito inicial (solo la primera vez) y flecha que se oculta al final. */
-function FilaModos({ idFila, titulo, modos, destacada, indice, onElegir }) {
+   empujoncito inicial (solo la primera vez) y flecha que se oculta al final.
+   Si la fila está bloqueada (Divertidos en eventos Base), las tarjetas se ven
+   con candado y al tocarlas solo aparece un aviso. */
+function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onElegir }) {
   const carrilRef = useRef(null);
   const [alFinal, setAlFinal] = useState(false);
+  const [avisoBloqueo, setAvisoBloqueo] = useState(false);
 
   useEffect(() => {
     const carril = carrilRef.current;
@@ -1285,6 +1298,14 @@ function FilaModos({ idFila, titulo, modos, destacada, indice, onElegir }) {
     if (carril) carril.scrollBy({ left: carril.clientWidth * 0.8, behavior: "smooth" });
   };
 
+  const alTocar = (modoId) => {
+    if (bloqueada) {
+      setAvisoBloqueo(true);
+      return;
+    }
+    onElegir(modoId);
+  };
+
   return (
     <div>
       {destacada && (
@@ -1292,11 +1313,19 @@ function FilaModos({ idFila, titulo, modos, destacada, indice, onElegir }) {
           Exclusivo de este evento
         </div>
       )}
+      {bloqueada && (
+        <div className="eyebrow" style={{ color: "var(--text-faint)", marginBottom: 4 }}>
+          {EMOJI_CANDADO} Disponible en eventos Premium
+        </div>
+      )}
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "baseline",
         gap: 10, marginBottom: 10,
       }}>
-        <span className="display" style={{ fontSize: 16, color: destacada ? "var(--magenta)" : "var(--text)" }}>
+        <span className="display" style={{
+          fontSize: 16,
+          color: destacada ? "var(--magenta)" : bloqueada ? "var(--text-dim)" : "var(--text)",
+        }}>
           {titulo}
         </span>
         <span style={{ fontSize: 11.5, color: "var(--text-faint)", whiteSpace: "nowrap" }}>
@@ -1311,7 +1340,8 @@ function FilaModos({ idFila, titulo, modos, destacada, indice, onElegir }) {
               key={modo.id}
               modo={modo}
               destacada={destacada}
-              onClick={() => onElegir(modo.id)}
+              bloqueada={bloqueada}
+              onClick={() => alTocar(modo.id)}
             />
           ))}
         </div>
@@ -1343,6 +1373,29 @@ function FilaModos({ idFila, titulo, modos, destacada, indice, onElegir }) {
           </svg>
         </button>
       </div>
+
+      {/* Aviso al tocar un modo bloqueado */}
+      {bloqueada && avisoBloqueo && (
+        <div className="card card-tight rise" style={{
+          marginTop: 10, display: "flex", alignItems: "center", gap: 12,
+          border: "1px solid var(--border-strong)",
+        }}>
+          <span style={{ fontSize: 20, flexShrink: 0 }}>{EMOJI_CANDADO}</span>
+          <span style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.5, flex: 1 }}>
+            Estos modos vienen incluidos en los eventos Premium de FUNfoto.
+          </span>
+          <button
+            onClick={() => setAvisoBloqueo(false)}
+            aria-label="Cerrar aviso"
+            style={{
+              background: "none", border: "none", cursor: "pointer", padding: 4,
+              display: "flex", flexShrink: 0,
+            }}
+          >
+            <Icon.X size={16} color="var(--text-faint)" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1350,12 +1403,14 @@ function FilaModos({ idFila, titulo, modos, destacada, indice, onElegir }) {
 /* Tarjeta de un modo con su portada (public/portadas/<id>.webp).
    Carga inmediata (sin "lazy"): el iPhone falla con carga a demanda
    dentro de filas que se deslizan de lado, y las portadas pesan poco.
-   Si la portada no carga, queda un fondo oscuro con el nombre. */
-function TarjetaModo({ modo, destacada, onClick }) {
+   Si la portada no carga, queda un fondo oscuro con el nombre.
+   Bloqueada: portada atenuada con candado en la esquina. */
+function TarjetaModo({ modo, destacada, bloqueada, onClick }) {
   const [sinPortada, setSinPortada] = useState(false);
   return (
     <button
       onClick={onClick}
+      aria-label={bloqueada ? `${modo.nombre}, disponible en eventos Premium` : modo.nombre}
       style={{
         position: "relative", flex: "0 0 136px", aspectRatio: "3 / 4",
         borderRadius: 14, overflow: "hidden", padding: 0, cursor: "pointer",
@@ -1373,12 +1428,24 @@ function TarjetaModo({ modo, destacada, onClick }) {
           style={{
             position: "absolute", inset: 0, width: "100%", height: "100%",
             objectFit: "cover", display: "block",
+            opacity: bloqueada ? 0.4 : 1,
+            filter: bloqueada ? "grayscale(0.6)" : "none",
           }}
         />
       )}
+      {bloqueada && (
+        <span style={{
+          position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
+          background: "rgba(5,5,10,0.75)", border: "1px solid var(--border-strong)",
+        }}>
+          {EMOJI_CANDADO}
+        </span>
+      )}
       <span className="display" style={{
         position: "absolute", left: 0, right: 0, bottom: 0,
-        padding: "28px 10px 10px", fontSize: 13, lineHeight: 1.2, color: "#fff",
+        padding: "28px 10px 10px", fontSize: 13, lineHeight: 1.2,
+        color: bloqueada ? "var(--text-dim)" : "#fff",
         background: "linear-gradient(180deg, rgba(5,5,10,0) 0%, rgba(5,5,10,0.92) 65%)",
       }}>
         {modo.nombre}
@@ -1396,7 +1463,7 @@ function TarjetaEspecial({ nombre, onClick, compacta }) {
         position: "relative", overflow: "hidden", width: "100%", cursor: "pointer",
         padding: compacta ? "20px 16px" : "30px 18px",
         borderRadius: 18, border: "1px solid var(--magenta)",
-        background: "linear-gradient(135deg, rgba(224,64,251,0.30) 0%, rgba(20,10,40,0.95) 45%, rgba(0,229,255,0.22) 100%)",
+        background: "linear-gradient(135deg, rgba(var(--magenta-rgb),0.30) 0%, rgba(20,10,40,0.95) 45%, rgba(var(--cyan-rgb),0.22) 100%)",
         animation: "nexoPulsoEspecial 2.2s ease-in-out infinite",
         display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
         textAlign: "center", fontFamily: "var(--font-body)",
@@ -1440,24 +1507,24 @@ function Instructivo({ onAceptar }) {
         @keyframes nexoSubir { from { opacity: 0; transform: translateY(18px) scale(0.98); } to { opacity: 1; transform: none; } }
         @keyframes nexoItem { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
         @keyframes nexoBrillo {
-          0%, 100% { box-shadow: 0 0 22px rgba(224,64,251,0.35), 0 0 0 1px rgba(224,64,251,0.4); transform: scale(1); }
-          50% { box-shadow: 0 0 36px rgba(0,229,255,0.45), 0 0 0 1px rgba(0,229,255,0.5); transform: scale(1.05); }
+          0%, 100% { box-shadow: 0 0 22px rgba(var(--magenta-rgb),0.35), 0 0 0 1px rgba(var(--magenta-rgb),0.4); transform: scale(1); }
+          50% { box-shadow: 0 0 36px rgba(var(--cyan-rgb),0.45), 0 0 0 1px rgba(var(--cyan-rgb),0.5); transform: scale(1.05); }
         }
       `}</style>
 
       <div style={{
         width: "100%", maxWidth: 380,
-        background: "linear-gradient(160deg, #16162a 0%, #0d0d16 100%)",
-        border: "1px solid rgba(224,64,251,0.45)",
+        background: "linear-gradient(160deg, var(--surface-2) 0%, var(--surface) 100%)",
+        border: "1px solid rgba(var(--magenta-rgb),0.45)",
         borderRadius: 22, padding: "28px 22px 22px",
-        boxShadow: "0 0 60px rgba(224,64,251,0.18), 0 20px 50px rgba(0,0,0,0.5)",
+        boxShadow: "0 0 60px rgba(var(--magenta-rgb),0.18), 0 20px 50px rgba(0,0,0,0.5)",
         animation: "nexoSubir 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both",
       }}>
         <div style={{
           width: 66, height: 66, borderRadius: "50%", margin: "0 auto 16px",
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 32,
-          background: "radial-gradient(circle, rgba(224,64,251,0.28), rgba(0,229,255,0.08))",
+          background: "radial-gradient(circle, rgba(var(--magenta-rgb),0.28), rgba(var(--cyan-rgb),0.08))",
           animation: "nexoBrillo 2.6s ease-in-out infinite",
         }}>
           {EMOJI_BRILLO}
@@ -1501,7 +1568,7 @@ function Instructivo({ onAceptar }) {
           cursor: "pointer", fontSize: 15, fontWeight: 700,
           fontFamily: "var(--font-body)", color: "#0a0a0f",
           background: "linear-gradient(90deg, var(--cyan), var(--magenta))",
-          boxShadow: "0 0 24px rgba(0,229,255,0.25)",
+          boxShadow: "0 0 24px rgba(var(--cyan-rgb),0.25)",
         }}>
           ¡Entendido, vamos!
         </button>
