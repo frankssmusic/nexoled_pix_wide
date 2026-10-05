@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { validarRut, OP_TERMS } from "../lib";
 import { cargarJSZip } from "../cdn";
 import Icon from "../components/Icons";
-import { Logo, Toast, Stat, Vacio, Modal } from "../components/UI";
+import { LogoTitulo, Toast, Stat, Vacio, Modal } from "../components/UI";
 
 /* Clave de sesión por evento: cada evento guarda su propia sesión */
 const authKey = (eventoId) => `op_auth_${eventoId}`;
@@ -285,8 +285,7 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
       <Centro>
         <div className="card rise">
           <div style={{ textAlign: "center", marginBottom: 22 }}>
-            <Logo size={22} sub={false} />
-            <div className="eyebrow" style={{ marginTop: 8 }}>Panel de operador</div>
+            <LogoTitulo titulo="Panel de operador" centrado />
           </div>
           <div className="display" style={{ fontSize: 16, marginBottom: 4 }}>{evento.nombre}</div>
           <p style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 18 }}>
@@ -370,8 +369,7 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
       <Centro>
         <div className="card rise">
           <div style={{ textAlign: "center", marginBottom: 20 }}>
-            <Logo size={22} sub={false} />
-            <div className="eyebrow" style={{ marginTop: 8 }}>Registro de operador</div>
+            <LogoTitulo titulo="Registro de operador" centrado />
           </div>
           <p style={{ color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6, marginBottom: 18 }}>
             Registramos tus datos como respaldo legal del evento.
@@ -416,8 +414,8 @@ export default function Operador({ evento, fotos, onRefreshFotos, onUpdateEvento
         marginBottom: 22, flexWrap: "wrap", gap: 12,
       }}>
         <div>
-          <Logo size={17} sub={false} />
-          <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>{evento.nombre}</div>
+          <LogoTitulo titulo="Panel de operador" />
+          <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 6 }}>{evento.nombre}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span className={`chip ${evento.evento_cerrado ? "chip-danger" : "chip-ok"}`}>

@@ -4,7 +4,7 @@ import { supabase } from "../supabase";
 import { generarSlug, sufijoCorto, urlsDe } from "../lib";
 import { cargarJSZip, cargarXLSX } from "../cdn";
 import Icon from "../components/Icons";
-import { Logo, Toast, Stat, Vacio, Modal } from "../components/UI";
+import { LogoTitulo, Toast, Stat, Vacio, Modal } from "../components/UI";
 
 // Costos por foto IA de respaldo (US$). Los reales se editan en el Admin
 // (tabla configuracion). base -> Seedream 5.0 Pro 1k | premium -> GPT Image 2
@@ -678,8 +678,7 @@ export default function Admin() {
         <div style={{ width: "100%", maxWidth: 380 }}>
           <div className="card rise">
             <div style={{ textAlign: "center", marginBottom: 22 }}>
-              <Logo size={22} />
-              <div className="eyebrow" style={{ marginTop: 10 }}>Panel de administración</div>
+              <LogoTitulo titulo="Panel de administración" centrado />
             </div>
             <input className="input" type="email" placeholder="Correo"
               autoComplete="username"
@@ -741,9 +740,8 @@ export default function Admin() {
 
       <header style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <Logo size={24} />
-          <div className="eyebrow" style={{ marginTop: 10 }}>Panel de administración</div>
-          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 6 }}>
+          <LogoTitulo titulo="Panel de administración" />
+          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 8 }}>
             {dolar.oficial
               ? `Dólar observado hoy: ${clp(dolar.valor)} (mindicador.cl)`
               : `Dólar referencial: ${clp(dolar.valor)} (no se pudo obtener el del día)`}

@@ -2,31 +2,61 @@ import { useEffect } from "react";
 import Icon from "./Icons";
 
 /* Logo NexoPix: imagen cromada azul y rubí (public/nexopix_logo.png, fondo transparente).
-   Solo se fija el alto; el ancho se calcula solo para no deformarlo.
-   Si no cabe en su contenedor, se achica parejo sin aplastarse. */
+   Proporción real del PNG: 1000 x 239. */
 const LOGO_URL = "/nexopix_logo.png";
+const LOGO_PROPORCION = 1000 / 239;
 
+/* Logo de tamaño fijo (se usa en pantallas que aún no tienen referencia).
+   El ancho se calcula con la proporción real, así nunca se deforma. */
 export function Logo({ size = 22, sub = true }) {
-  const alto = Math.round(size * 1.7);
+  const alto = Math.round(size * 2);
+  const ancho = Math.round(alto * LOGO_PROPORCION);
   return (
     <div style={{
       lineHeight: 1, display: "inline-flex", flexDirection: "column",
-      alignItems: "center", maxWidth: "100%", flexShrink: 0,
+      alignItems: "center", flexShrink: 0,
     }}>
       <img
         src={LOGO_URL}
         alt="NexoPix"
+        width={ancho}
         height={alto}
         style={{
-          display: "block", height: alto, width: "auto",
-          maxWidth: "100%", objectFit: "contain",
+          display: "block", width: ancho, maxWidth: "80vw", height: "auto",
+          aspectRatio: `${LOGO_PROPORCION}`, objectFit: "contain",
         }}
       />
       {sub && (
-        <div className="eyebrow" style={{ fontSize: 9, marginTop: 2, color: "var(--text-faint)" }}>
+        <div className="eyebrow" style={{ fontSize: 9, marginTop: 4, color: "var(--text-faint)" }}>
           Wide
         </div>
       )}
+    </div>
+  );
+}
+
+/* Logo + título: el logo mide exactamente lo mismo de ancho que el título.
+   Truco: la caja del logo tiene ancho 0 (no empuja) y ancho mínimo 100%,
+   así el ancho lo define solo el texto y el logo se estira a ese ancho. */
+export function LogoTitulo({ titulo, centrado = false }) {
+  return (
+    <div style={{
+      display: "inline-flex", flexDirection: "column",
+      alignItems: centrado ? "center" : "flex-start", maxWidth: "100%",
+    }}>
+      <div style={{ width: 0, minWidth: "100%" }}>
+        <img
+          src={LOGO_URL}
+          alt="NexoPix"
+          style={{
+            display: "block", width: "100%", height: "auto",
+            aspectRatio: `${LOGO_PROPORCION}`, objectFit: "contain",
+          }}
+        />
+      </div>
+      <div className="eyebrow" style={{ marginTop: 8, whiteSpace: "nowrap" }}>
+        {titulo}
+      </div>
     </div>
   );
 }
