@@ -622,7 +622,7 @@ export default function Asistente({ evento }) {
       }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, color: "var(--text)" }}>Usarás la misma foto</div>
-        <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Elige un personaje y se genera al tiro.</div>
+        <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Elige un modo y se genera al tiro.</div>
       </div>
       <button className="btn btn-ghost btn-sm" onClick={() => setReusarFoto(false)}>
         Usar otra
@@ -732,7 +732,7 @@ export default function Asistente({ evento }) {
                   ¿Quién quieres <span className="grad-text">ser hoy?</span>
                 </h1>
                 <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.55, margin: "0 auto 22px", maxWidth: 320 }}>
-                  Elige un personaje, toma una selfie y la IA te transforma.
+                  Elige un modo, toma una selfie y la IA te transforma.
                 </p>
 
                 <Marquesina modos={modosMarquesina} onClick={() => abrirFunfoto()} />
@@ -747,7 +747,7 @@ export default function Asistente({ evento }) {
                 <button className="btn btn-primary btn-block"
                   style={{ marginTop: 22, padding: "16px 18px", fontSize: 16 }}
                   onClick={() => abrirFunfoto()}>
-                  Elegir mi personaje
+                  Quiero mi FUNfoto
                 </button>
               </>
             )}
@@ -806,7 +806,7 @@ export default function Asistente({ evento }) {
           <div className="rise">
             <div style={{ marginBottom: 18 }}>
               <h2 className="display" style={{ fontSize: 24, lineHeight: 1.15 }}>
-                Elige tu <span className="grad-text">personaje</span>
+                Elige tu <span className="grad-text">FUNfoto</span>
               </h2>
               {!avisoMismaFoto && (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
@@ -1154,7 +1154,7 @@ function Marquesina({ modos, onClick }) {
   const mitad = Math.ceil(modos.length / 2);
   const cintas = [modos.slice(0, mitad), modos.slice(mitad)];
   return (
-    <button className="nexo-marquesina" onClick={onClick} aria-label="Ver todos los personajes">
+    <button className="nexo-marquesina" onClick={onClick} aria-label="Ver todos los modos">
       {cintas.map((lista, i) => (
         <div
           key={i}
