@@ -2,9 +2,9 @@ import { useEffect } from "react";
 import Icon from "./Icons";
 
 /* Logo NexoPix: imagen cromada azul y rubí (public/nexopix_logo.png, fondo transparente).
-   Proporción real del PNG: 1000 x 239. */
+   Proporción real del PNG recortado: 1200 x 233. */
 const LOGO_URL = "/nexopix_logo.png";
-const LOGO_PROPORCION = 1000 / 239;
+const LOGO_PROPORCION = 1200 / 233;
 
 /* Logo de tamaño fijo (se usa en pantallas que aún no tienen referencia).
    El ancho se calcula con la proporción real, así nunca se deforma. */
