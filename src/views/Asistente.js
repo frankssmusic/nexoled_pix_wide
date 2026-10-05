@@ -59,6 +59,9 @@ const FILAS_CATALOGO = [
 // Filas que ya hicieron el empujoncito inicial (solo la primera vez por visita).
 const filasEmpujadas = new Set();
 
+// Velocidad de las cintas de la marquesina (píxeles por segundo).
+const VELOCIDAD_CINTA = 26;
+
 // Modo Especial: el prompt y las referencias los define el admin por evento.
 const MODO_ESPECIAL = "especial";
 
@@ -671,23 +674,8 @@ export default function Asistente({ evento }) {
           0%, 100% { transform: translateX(0); opacity: 0.85; }
           50% { transform: translateX(5px); opacity: 1; }
         }
-        .nexo-marquesina {
-          display: block; width: calc(100% + 32px); margin: 0 -16px; padding: 0;
-          overflow: hidden; background: none; border: none; cursor: pointer;
-          -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
-          mask-image: linear-gradient(90deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
-        }
-        .nexo-cinta {
-          display: flex; width: max-content;
-          animation-name: nexoCinta; animation-timing-function: linear; animation-iteration-count: infinite;
-        }
-        .nexo-cinta.inversa { animation-direction: reverse; }
-        @keyframes nexoCinta {
-          from { transform: translateX(0); }
-          to { transform: translateX(-50%); }
-        }
         @media (prefers-reduced-motion: reduce) {
-          .nexo-flecha, .nexo-cinta { animation: none; }
+          .nexo-flecha { animation: none; }
         }
       `}</style>
 
@@ -1148,22 +1136,69 @@ function BarraSuperior({ nombreEvento, onVolver }) {
   );
 }
 
-/* Marquesina del inicio: dos cintas de portadas que se mueven solas
-   en sentidos opuestos. Tocarla abre el catálogo. */
+/* Marquesina del inicio: dos cintas de portadas que se mueven sin parar
+   en sentidos opuestos. Las mueve JavaScript cuadro a cuadro (no CSS),
+   así funciona igual en iPhone, Android y computador, incluso con
+   "reducir movimiento" o modo de bajo consumo. Tocarla abre el catálogo. */
 function Marquesina({ modos, onClick }) {
+  const cintaArribaRef = useRef(null);
+  const cintaAbajoRef = useRef(null);
   const mitad = Math.ceil(modos.length / 2);
   const cintas = [modos.slice(0, mitad), modos.slice(mitad)];
+
+  useEffect(() => {
+    // dir -1: se mueve a la izquierda. dir 1: se mueve a la derecha.
+    const estado = [
+      { ref: cintaArribaRef, x: 0, dir: -1 },
+      { ref: cintaAbajoRef, x: 0, dir: 1 },
+    ];
+    let cuadro = 0;
+    let anterior = performance.now();
+
+    const paso = (ahora) => {
+      // Si la pestaña estuvo oculta, no "salta": máximo 0,1 s por cuadro.
+      const dt = Math.min(ahora - anterior, 100) / 1000;
+      anterior = ahora;
+      estado.forEach((c) => {
+        const el = c.ref.current;
+        if (!el) return;
+        const anchoMitad = el.scrollWidth / 2;
+        if (!anchoMitad) return;
+        c.x = (c.x + VELOCIDAD_CINTA * dt) % anchoMitad;
+        const desplazamiento = c.dir < 0 ? -c.x : c.x - anchoMitad;
+        el.style.transform = `translate3d(${desplazamiento}px, 0, 0)`;
+      });
+      cuadro = requestAnimationFrame(paso);
+    };
+
+    cuadro = requestAnimationFrame(paso);
+    return () => cancelAnimationFrame(cuadro);
+  }, []);
+
   return (
-    <button className="nexo-marquesina" onClick={onClick} aria-label="Ver todos los modos">
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label="Ver todos los modos"
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(); }}
+      style={{
+        position: "relative", overflow: "hidden", cursor: "pointer",
+        width: "calc(100% + 32px)", margin: "0 -16px",
+      }}
+    >
       {cintas.map((lista, i) => (
         <div
           key={i}
-          className={`nexo-cinta${i === 1 ? " inversa" : ""}`}
-          style={{ marginTop: i ? 8 : 0, animationDuration: `${Math.max(lista.length, 4) * 3.5}s` }}
+          ref={i === 0 ? cintaArribaRef : cintaAbajoRef}
+          style={{
+            display: "flex", width: "max-content", marginTop: i ? 8 : 0,
+            willChange: "transform", transform: "translate3d(0, 0, 0)",
+          }}
         >
           {[...lista, ...lista].map((modo, j) => (
             <div key={`${modo.id}-${j}`} style={{
-              flex: "0 0 84px", aspectRatio: "3 / 4", marginRight: 8,
+              flex: "0 0 84px", height: 112, marginRight: 8,
               borderRadius: 10, overflow: "hidden",
               border: "1px solid var(--border)", background: "var(--surface)",
             }}>
@@ -1178,7 +1213,17 @@ function Marquesina({ modos, onClick }) {
           ))}
         </div>
       ))}
-    </button>
+
+      {/* Bordes difuminados (degradados encima, compatibles con Safari) */}
+      <div style={{
+        position: "absolute", top: 0, bottom: 0, left: 0, width: 48, pointerEvents: "none",
+        background: "linear-gradient(90deg, var(--bg) 0%, transparent 100%)",
+      }} />
+      <div style={{
+        position: "absolute", top: 0, bottom: 0, right: 0, width: 48, pointerEvents: "none",
+        background: "linear-gradient(270deg, var(--bg) 0%, transparent 100%)",
+      }} />
+    </div>
   );
 }
 
