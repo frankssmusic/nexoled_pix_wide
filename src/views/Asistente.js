@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { supabase } from "../supabase";
 import { comprimirImagen } from "../lib";
 import Icon from "../components/Icons";
-import { Vacio } from "../components/UI";
+import { Vacio, Logo } from "../components/UI";
 import MiniJuego from "../components/MiniJuego";
 
 // Bloque DIVERTIDOS: filtros tipo Snapchat, solo visibles en eventos premium.
@@ -90,6 +90,7 @@ const CONSEJOS_INSTRUCTIVO = [
 ];
 const EMOJI_BRILLO = "\u{2728}";
 const EMOJI_CONTROL = "\u{1F3AE}";
+const EMOJI_LUZ = "\u{1F4A1}";
 
 const esCelular = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
 
@@ -123,12 +124,14 @@ export default function Asistente({ evento }) {
   const fileRefIAGaleria = useRef();
   const fileRefIACamara = useRef();
   const modoParaSubidaRef = useRef(null);
+  const destinoFunfotoRef = useRef("catalogo"); // "catalogo" o el Especial
   const seguirGenerandoRef = useRef(true);
   const wakeLockRef = useRef(null);
   const audioCtxRef = useRef(null);
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
   const esPremium = evento?.motor_ia === "premium";
+  const iaActiva = evento?.ia_habilitada !== false;
   const claveInstructivo = evento ? `funfoto_instructivo_${evento.id}` : null;
 
   // Contenido IA del evento: grilla / especial_grilla / solo_especial.
@@ -139,6 +142,7 @@ export default function Asistente({ evento }) {
 
   // Filas del catálogo según el tier (Divertidos solo en Premium).
   const filasVisibles = FILAS_CATALOGO.filter((f) => !f.premium || esPremium);
+  const modosMarquesina = filasVisibles.flatMap((f) => f.modos);
 
   // Estado de la foto que se le informa al minijuego.
   let estadoFoto = "generando";
@@ -230,9 +234,9 @@ export default function Asistente({ evento }) {
 
   /* ---------- Entrada a FUNfoto IA ---------- */
 
-  // Con "Solo Especial" se salta el catálogo y va directo a la selfie.
+  // Va al catálogo, o directo a la selfie si es el Especial.
   const entrarAFunfoto = () => {
-    if (esSoloEspecial) {
+    if (esSoloEspecial || destinoFunfotoRef.current === MODO_ESPECIAL) {
       modoParaSubidaRef.current = MODO_ESPECIAL;
       setReusarFoto(false);
       setStep("elegir-fuente-ia");
@@ -242,8 +246,9 @@ export default function Asistente({ evento }) {
   };
 
   // Instructivo: una vez por evento y celular.
-  const abrirFunfoto = () => {
+  const abrirFunfoto = (destino = "catalogo") => {
     prepararAudio();
+    destinoFunfotoRef.current = destino;
     let visto = false;
     try {
       visto = claveInstructivo ? localStorage.getItem(claveInstructivo) === "1" : false;
@@ -267,8 +272,10 @@ export default function Asistente({ evento }) {
     entrarAFunfoto();
   };
 
+  // Si se entró al Especial desde el inicio, vuelve al inicio; si no, al catálogo.
   const volverAlCatalogo = () => {
-    if (esSoloEspecial) {
+    if (esSoloEspecial || destinoFunfotoRef.current === MODO_ESPECIAL) {
+      destinoFunfotoRef.current = "catalogo";
       setStep("subir");
       return;
     }
@@ -530,6 +537,7 @@ export default function Asistente({ evento }) {
   const otroModo = () => {
     if (!file || esSoloEspecial) { reiniciar(); return; }
     limpiarResultado();
+    destinoFunfotoRef.current = "catalogo";
     setReusarFoto(true);
     setStep("catalogo");
   };
@@ -572,6 +580,7 @@ export default function Asistente({ evento }) {
     setUrlResultadoIA(null); setFotoIdIA(null); setIntentosIA(0);
     setConfirmandoIA(false); setIaConfirmada(false); setModoSeleccionado(null);
     modoParaSubidaRef.current = null;
+    destinoFunfotoRef.current = "catalogo";
   };
 
   if (!evento) {
@@ -593,6 +602,16 @@ export default function Asistente({ evento }) {
     );
   }
 
+  // Qué hace la flecha de la barra superior en cada pantalla.
+  // Mientras se genera o tras enviar no hay flecha, para no cortar nada por accidente.
+  const accionesVolver = {
+    catalogo: reiniciar,
+    "elegir-fuente-normal": () => setStep("subir"),
+    "elegir-fuente-ia": volverAlCatalogo,
+    revisar: reiniciar,
+  };
+  const accionVolver = accionesVolver[step] || null;
+
   const avisoMismaFoto = reusarFoto && preview ? (
     <div className="card card-tight" style={{
       display: "flex", alignItems: "center", gap: 12, marginBottom: 16,
@@ -603,7 +622,7 @@ export default function Asistente({ evento }) {
       }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, color: "var(--text)" }}>Usarás la misma foto</div>
-        <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Elige un modo y se genera al tiro.</div>
+        <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Elige un personaje y se genera al tiro.</div>
       </div>
       <button className="btn btn-ghost btn-sm" onClick={() => setReusarFoto(false)}>
         Usar otra
@@ -625,7 +644,7 @@ export default function Asistente({ evento }) {
   return (
     <div style={{
       minHeight: "100vh", display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center", padding: "20px 16px 40px",
+      alignItems: "center", justifyContent: "flex-start", padding: "20px 16px 40px",
     }}>
       <style>{`
         @keyframes nexoPulsoEspecial {
@@ -652,8 +671,23 @@ export default function Asistente({ evento }) {
           0%, 100% { transform: translateX(0); opacity: 0.85; }
           50% { transform: translateX(5px); opacity: 1; }
         }
+        .nexo-marquesina {
+          display: block; width: calc(100% + 32px); margin: 0 -16px; padding: 0;
+          overflow: hidden; background: none; border: none; cursor: pointer;
+          -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
+          mask-image: linear-gradient(90deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
+        }
+        .nexo-cinta {
+          display: flex; width: max-content;
+          animation-name: nexoCinta; animation-timing-function: linear; animation-iteration-count: infinite;
+        }
+        .nexo-cinta.inversa { animation-direction: reverse; }
+        @keyframes nexoCinta {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
         @media (prefers-reduced-motion: reduce) {
-          .nexo-flecha { animation: none; }
+          .nexo-flecha, .nexo-cinta { animation: none; }
         }
       `}</style>
 
@@ -679,42 +713,81 @@ export default function Asistente({ evento }) {
         <input ref={fileRefCamara} type="file" accept="image/*" capture="environment" style={estiloInputOculto}
           onChange={(e) => { tomarArchivo(e.target.files[0]); e.target.value = ""; }} />
 
-        <header style={{ textAlign: "center", marginBottom: 24 }}>
-          <div className="eyebrow" style={{ marginBottom: 8 }}>NexoLED presenta</div>
-          <h1 className="display" style={{ fontSize: 26, lineHeight: 1.15 }}>{evento.nombre}</h1>
-        </header>
+        {/* Barra superior compacta en todas las pantallas menos el inicio */}
+        {step !== "subir" && (
+          <BarraSuperior nombreEvento={evento.nombre} onVolver={accionVolver} />
+        )}
 
+        {/* ===================== INICIO: MARQUESINA ===================== */}
         {step === "subir" && (
-          <div className="rise">
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <button
-                onClick={() => setStep("elegir-fuente-normal")}
-                style={{
-                  position: "relative", width: "min(72vw, 260px)", aspectRatio: "0.45 / 1",
-                  borderRadius: "14px 14px 3px 3px", overflow: "hidden", cursor: "pointer",
-                  border: "1px solid rgba(0,229,255,0.4)",
-                  background: "linear-gradient(180deg, #0d0d16, #14141f)",
-                  boxShadow: "0 0 40px rgba(0,229,255,0.12), inset 0 0 40px rgba(0,229,255,0.04)",
-                  display: "flex", flexDirection: "column", alignItems: "center",
-                  justifyContent: "center", gap: 14, padding: 20, textAlign: "center",
-                }}
-              >
-                <Icon.Camera size={38} color="var(--cyan)" />
-                <div className="display" style={{ fontSize: 17, lineHeight: 1.25 }}>{mensaje}</div>
-                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>JPG · PNG · HEIC</div>
-              </button>
-              <div style={{ display: "flex", gap: 26 }}>
-                {[0, 1].map((i) => (
-                  <div key={i} style={{
-                    width: 7, height: 18,
-                    background: "linear-gradient(180deg, rgba(0,229,255,0.3), rgba(0,229,255,0.08))",
-                    borderRadius: "0 0 3px 3px",
-                  }} />
-                ))}
-              </div>
+          <div className="rise" style={{ textAlign: "center", paddingTop: 8 }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+              <Logo size={15} sub={false} />
             </div>
+            <div className="eyebrow" style={{ marginBottom: 22 }}>{evento.nombre}</div>
 
-            <p style={{ textAlign: "center", color: "var(--text-dim)", fontSize: 14, marginTop: 22, lineHeight: 1.6 }}>
+            {iaActiva && !esSoloEspecial && (
+              <>
+                <h1 className="display" style={{ fontSize: 30, lineHeight: 1.1, marginBottom: 10 }}>
+                  ¿Quién quieres <span className="grad-text">ser hoy?</span>
+                </h1>
+                <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.55, margin: "0 auto 22px", maxWidth: 320 }}>
+                  Elige un personaje, toma una selfie y la IA te transforma.
+                </p>
+
+                <Marquesina modos={modosMarquesina} onClick={() => abrirFunfoto()} />
+
+                {conEspecialEnGrilla && (
+                  <div style={{ marginTop: 22 }}>
+                    <TarjetaEspecial nombre={nombreEspecial} compacta
+                      onClick={() => abrirFunfoto(MODO_ESPECIAL)} />
+                  </div>
+                )}
+
+                <button className="btn btn-primary btn-block"
+                  style={{ marginTop: 22, padding: "16px 18px", fontSize: 16 }}
+                  onClick={() => abrirFunfoto()}>
+                  Elegir mi personaje
+                </button>
+              </>
+            )}
+
+            {iaActiva && esSoloEspecial && (
+              <>
+                <h1 className="display" style={{ fontSize: 28, lineHeight: 1.1, marginBottom: 10 }}>
+                  Tu foto <span className="grad-text">especial</span>
+                </h1>
+                <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.55, margin: "0 auto 22px", maxWidth: 320 }}>
+                  Toma una selfie y la IA crea tu recuerdo de esta noche.
+                </p>
+                <TarjetaEspecial nombre={nombreEspecial} onClick={() => abrirFunfoto(MODO_ESPECIAL)} />
+              </>
+            )}
+
+            {!iaActiva && (
+              <>
+                <h1 className="display" style={{ fontSize: 28, lineHeight: 1.1, marginBottom: 10 }}>
+                  Comparte tu <span className="grad-text">foto</span>
+                </h1>
+                <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.55, margin: "0 auto 22px", maxWidth: 320 }}>
+                  Súbela y aparece en la pantalla del evento.
+                </p>
+                <button className="btn btn-primary btn-block"
+                  style={{ padding: "16px 18px", fontSize: 16 }}
+                  onClick={() => setStep("elegir-fuente-normal")}>
+                  <Icon.Camera size={18} /> {mensaje}
+                </button>
+              </>
+            )}
+
+            {iaActiva && (
+              <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }}
+                onClick={() => setStep("elegir-fuente-normal")}>
+                <Icon.Camera size={16} /> Subir foto sin IA
+              </button>
+            )}
+
+            <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 12, lineHeight: 1.5 }}>
               Tu foto pasa por revisión y aparece en la pantalla del evento.
             </p>
 
@@ -724,30 +797,34 @@ export default function Asistente({ evento }) {
               </div>
             )}
 
-            {evento?.ia_habilitada !== false && (
-              <div style={{ marginTop: 26, paddingTop: 20, borderTop: "1px dashed var(--border)", textAlign: "center" }}>
-                {esSoloEspecial ? (
-                  <TarjetaEspecial nombre={nombreEspecial} onClick={abrirFunfoto} compacta />
-                ) : (
-                  <button className="btn btn-ghost btn-block" onClick={abrirFunfoto}>
-                    FUNfoto IA
-                  </button>
-                )}
-              </div>
-            )}
-
             <Banner />
           </div>
         )}
 
+        {/* ===================== CATÁLOGO ===================== */}
         {step === "catalogo" && (
           <div className="rise">
-            <div style={{ textAlign: "center", marginBottom: 18 }}>
-              <div className="eyebrow" style={{ marginBottom: 6 }}>FUNfoto IA</div>
-              <h2 className="display" style={{ fontSize: 20 }}>Elige un modo</h2>
+            <div style={{ marginBottom: 18 }}>
+              <h2 className="display" style={{ fontSize: 24, lineHeight: 1.15 }}>
+                Elige tu <span className="grad-text">personaje</span>
+              </h2>
+              {!avisoMismaFoto && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+                  <span style={{
+                    width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 14, background: "var(--tint-cyan)",
+                  }}>
+                    {EMOJI_LUZ}
+                  </span>
+                  <span style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.45 }}>
+                    Selfie con buena luz y rostro visible: así la IA te reconoce mejor.
+                  </span>
+                </div>
+              )}
             </div>
 
-            {avisoMismaFoto || consejoSelfie}
+            {avisoMismaFoto}
 
             {conEspecialEnGrilla && (
               <div style={{ marginBottom: 22 }}>
@@ -768,10 +845,6 @@ export default function Asistente({ evento }) {
                 />
               ))}
             </div>
-
-            <button className="btn btn-ghost btn-block" style={{ marginTop: 24 }} onClick={reiniciar}>
-              Volver
-            </button>
 
             <Banner />
           </div>
@@ -813,7 +886,7 @@ export default function Asistente({ evento }) {
               Elegir de galería
             </button>
             <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={volverAlCatalogo}>
-              {esSoloEspecial ? "Volver" : "Volver al catálogo"}
+              {esSoloEspecial || destinoFunfotoRef.current === MODO_ESPECIAL ? "Volver" : "Volver al catálogo"}
             </button>
             <Banner />
           </div>
@@ -1039,6 +1112,73 @@ export default function Asistente({ evento }) {
         )}
       </div>
     </div>
+  );
+}
+
+/* Barra superior compacta: flecha para volver (si corresponde),
+   logo chico a la izquierda y nombre del evento a la derecha. */
+function BarraSuperior({ nombreEvento, onVolver }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22 }}>
+      {onVolver && (
+        <button
+          onClick={onVolver}
+          aria-label="Volver"
+          style={{
+            width: 36, height: 36, borderRadius: "50%", flexShrink: 0, padding: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "var(--surface)", border: "1px solid var(--border)",
+            color: "var(--text)", cursor: "pointer",
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 6l-6 6 6 6" />
+          </svg>
+        </button>
+      )}
+      <Logo size={11} sub={false} />
+      <span className="eyebrow" style={{
+        marginLeft: "auto", maxWidth: "45%", overflow: "hidden",
+        textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {nombreEvento}
+      </span>
+    </div>
+  );
+}
+
+/* Marquesina del inicio: dos cintas de portadas que se mueven solas
+   en sentidos opuestos. Tocarla abre el catálogo. */
+function Marquesina({ modos, onClick }) {
+  const mitad = Math.ceil(modos.length / 2);
+  const cintas = [modos.slice(0, mitad), modos.slice(mitad)];
+  return (
+    <button className="nexo-marquesina" onClick={onClick} aria-label="Ver todos los personajes">
+      {cintas.map((lista, i) => (
+        <div
+          key={i}
+          className={`nexo-cinta${i === 1 ? " inversa" : ""}`}
+          style={{ marginTop: i ? 8 : 0, animationDuration: `${Math.max(lista.length, 4) * 3.5}s` }}
+        >
+          {[...lista, ...lista].map((modo, j) => (
+            <div key={`${modo.id}-${j}`} style={{
+              flex: "0 0 84px", aspectRatio: "3 / 4", marginRight: 8,
+              borderRadius: 10, overflow: "hidden",
+              border: "1px solid var(--border)", background: "var(--surface)",
+            }}>
+              <img
+                src={`/portadas/${modo.id}.webp`}
+                alt=""
+                draggable={false}
+                onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              />
+            </div>
+          ))}
+        </div>
+      ))}
+    </button>
   );
 }
 
