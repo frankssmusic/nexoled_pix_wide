@@ -5,38 +5,62 @@ import Icon from "../components/Icons";
 import { Vacio } from "../components/UI";
 import MiniJuego from "../components/MiniJuego";
 
-const MODOS_IA = [
-  { id: "game_of_thrones", nombre: "Game of Thrones" },
-  { id: "peaky_style", nombre: "Peaky Style" },
-  { id: "breaking_bad", nombre: "Breaking Bad" },
-  { id: "viejitos", nombre: "Viejitos" },
-  { id: "harry_magic", nombre: "Harry Magic" },
-  { id: "super_hero", nombre: "Super Hero" },
-  { id: "old_school", nombre: "Old School" },
-  { id: "jurassic_park", nombre: "Jurassic Park" },
-  { id: "simpsons", nombre: "Simpsons" },
-  { id: "princesa_disney", nombre: "Princesa Disney" },
-  { id: "disco_70s", nombre: "70s Disco" },
-  { id: "barbie", nombre: "Barbie" },
-];
-
 // Bloque DIVERTIDOS: filtros tipo Snapchat, solo visibles en eventos premium.
 // El servidor (api/generarFoto.js) también los bloquea si el evento no es premium.
 const MODOS_DIVERTIDOS = [
   { id: "ojos_saltones", nombre: "Ojos Saltones" },
-  { id: "maquillaje_tia", nombre: "Maquillaje de Tía" },
+  { id: "maquillaje_tia", nombre: "El Gran Maquillaje" },
   { id: "chimuela_cachetona", nombre: "Chimuela Cachetona" },
-  { id: "cambio_genero", nombre: "Al Revés" },
+  { id: "cambio_genero", nombre: "Mi otr@ yo" },
   { id: "cara_pescado", nombre: "Cara de Pescado" },
   { id: "cara_bebe", nombre: "Cara de Bebé" },
   { id: "cabezones", nombre: "Cabezones" },
-  { id: "cara_aplastada", nombre: "Cara Aplastada" },
+  { id: "cara_aplastada", nombre: "Gruñón" },
 ];
+
+// Catálogo en filas deslizables. El id interno de cada modo no cambia;
+// la portada se busca en public/portadas/<id>.webp
+const FILAS_CATALOGO = [
+  { id: "divertidos", titulo: "Divertidos", premium: true, modos: MODOS_DIVERTIDOS },
+  {
+    id: "cine", titulo: "Cine y series", modos: [
+      { id: "game_of_thrones", nombre: "Juego de Tronos" },
+      { id: "peaky_style", nombre: "Peaky Style" },
+      { id: "breaking_bad", nombre: "Breaking Bad" },
+      { id: "harry_magic", nombre: "Harry Magic" },
+      { id: "jurassic_park", nombre: "Jurassic Park" },
+      { id: "super_hero", nombre: "Super Hero" },
+    ],
+  },
+  {
+    id: "epocas", titulo: "Épocas", modos: [
+      { id: "old_school", nombre: "Old School" },
+      { id: "disco_70s", nombre: "70s Disco" },
+      { id: "viejitos", nombre: "Viejitos" },
+    ],
+  },
+  {
+    id: "animados", titulo: "Animados y fantasía", modos: [
+      { id: "simpsons", nombre: "Simpsons" },
+      { id: "barbie", nombre: "El Mundo Barbie" },
+      { id: "princesa_disney", nombre: "Príncipes y Princesas" },
+    ],
+  },
+  {
+    id: "futbol", titulo: "Fútbol Fan", modos: [
+      { id: "futbol_fan_1", nombre: "Noruega" },
+      { id: "futbol_fan_2", nombre: "Francia" },
+      { id: "futbol_fan_3", nombre: "Portugal" },
+      { id: "futbol_fan_4", nombre: "Argentina" },
+    ],
+  },
+];
+
+// Filas que ya hicieron el empujoncito inicial (solo la primera vez por visita).
+const filasEmpujadas = new Set();
 
 // Modo Especial: el prompt y las referencias los define el admin por evento.
 const MODO_ESPECIAL = "especial";
-
-const esModoDivertido = (modoId) => MODOS_DIVERTIDOS.some((m) => m.id === modoId);
 
 // Mensajes que van rotando mientras la IA genera la foto.
 const MENSAJES_GENERANDO = [
@@ -55,15 +79,6 @@ const MENSAJE_ERROR_REINTENTABLE =
 
 // Espera máxima: 90 consultas x 3 segundos = 270 segundos.
 const MAX_CONSULTAS = 90;
-
-const MODO_FUTBOL_FAN = { id: "futbol_fan", nombre: "Fútbol Fan" };
-
-const SUBMODOS_FUTBOL = [
-  { id: "futbol_fan_1", nombre: "Países Bajos" },
-  { id: "futbol_fan_2", nombre: "Francia" },
-  { id: "futbol_fan_3", nombre: "Portugal" },
-  { id: "futbol_fan_4", nombre: "Argentina" },
-];
 
 // Consejos del instructivo. Los emojis van como códigos para que no se
 // corrompan al copiar el archivo.
@@ -121,6 +136,9 @@ export default function Asistente({ evento }) {
   const esSoloEspecial = contenido === "solo_especial";
   const conEspecialEnGrilla = contenido === "especial_grilla";
   const nombreEspecial = evento?.especial_label || "Especial de la noche";
+
+  // Filas del catálogo según el tier (Divertidos solo en Premium).
+  const filasVisibles = FILAS_CATALOGO.filter((f) => !f.premium || esPremium);
 
   // Estado de la foto que se le informa al minijuego.
   let estadoFoto = "generando";
@@ -254,8 +272,7 @@ export default function Asistente({ evento }) {
       setStep("subir");
       return;
     }
-    const modoActual = modoParaSubidaRef.current || modoSeleccionado;
-    setStep(esModoDivertido(modoActual) ? "catalogo-divertidos" : "catalogo");
+    setStep("catalogo");
   };
 
   // Descargar la foto generada.
@@ -433,20 +450,6 @@ export default function Asistente({ evento }) {
 
   const elegirModo = (modoId) => {
     prepararAudio();
-    if (modoId === "futbol_fan") {
-      setStep("catalogo-futbol");
-      return;
-    }
-    if (reusarFoto && file) {
-      iniciarConFotoGuardada(modoId);
-      return;
-    }
-    modoParaSubidaRef.current = modoId;
-    setStep("elegir-fuente-ia");
-  };
-
-  const elegirSubmodoFutbol = (modoId) => {
-    prepararAudio();
     if (reusarFoto && file) {
       iniciarConFotoGuardada(modoId);
       return;
@@ -619,13 +622,6 @@ export default function Asistente({ evento }) {
 
   const estiloInputOculto = { position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" };
 
-  const estiloTarjetaModo = (borde) => ({
-    aspectRatio: "1 / 1", display: "flex", alignItems: "center",
-    justifyContent: "center", textAlign: "center", padding: 12,
-    cursor: "pointer", border: `1px solid ${borde}`,
-    background: "var(--surface)",
-  });
-
   return (
     <div style={{
       minHeight: "100vh", display: "flex", flexDirection: "column",
@@ -643,6 +639,21 @@ export default function Asistente({ evento }) {
         @keyframes nexoFlotarEmoji {
           0%, 100% { transform: translateY(0) scale(1); }
           50% { transform: translateY(-4px) scale(1.12); }
+        }
+        .nexo-carril {
+          display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden;
+          scroll-snap-type: x mandatory; scroll-padding-left: 16px;
+          margin: 0 -16px; padding: 2px 16px 6px;
+          scrollbar-width: none; -webkit-overflow-scrolling: touch;
+        }
+        .nexo-carril::-webkit-scrollbar { display: none; }
+        .nexo-flecha { animation: nexoLatidoFlecha 1.4s ease-in-out infinite; }
+        @keyframes nexoLatidoFlecha {
+          0%, 100% { transform: translateX(0); opacity: 0.85; }
+          50% { transform: translateX(5px); opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .nexo-flecha { animation: none; }
         }
       `}</style>
 
@@ -739,104 +750,27 @@ export default function Asistente({ evento }) {
             {avisoMismaFoto || consejoSelfie}
 
             {conEspecialEnGrilla && (
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 22 }}>
                 <TarjetaEspecial nombre={nombreEspecial} onClick={() => elegirModo(MODO_ESPECIAL)} />
               </div>
             )}
 
-            {esPremium && (
-              <button
-                onClick={() => setStep("catalogo-divertidos")}
-                className="card"
-                style={{
-                  width: "100%", marginBottom: 16, padding: "22px 16px",
-                  display: "flex", flexDirection: "column", alignItems: "center",
-                  justifyContent: "center", gap: 8, textAlign: "center", cursor: "pointer",
-                  border: "1px solid var(--magenta)",
-                  background: "linear-gradient(135deg, rgba(224,64,251,0.14), rgba(0,229,255,0.08))",
-                  boxShadow: "0 0 30px rgba(224,64,251,0.15)",
-                }}
-              >
-                <span className="eyebrow" style={{ color: "var(--magenta)" }}>Exclusivo de este evento</span>
-                <span className="display" style={{ fontSize: 22, color: "#fff" }}>Divertidos</span>
-                <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}>Filtros chistosos para reírse en grupo</span>
-              </button>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {MODOS_IA.map((modo) => (
-                <button key={modo.id} onClick={() => elegirModo(modo.id)} className="card"
-                  style={estiloTarjetaModo("var(--border)")}>
-                  <span className="display" style={{ fontSize: 14, color: "#fff" }}>{modo.nombre}</span>
-                </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              {filasVisibles.map((fila, i) => (
+                <FilaModos
+                  key={fila.id}
+                  idFila={fila.id}
+                  titulo={fila.titulo}
+                  modos={fila.modos}
+                  destacada={fila.premium === true}
+                  indice={i}
+                  onElegir={elegirModo}
+                />
               ))}
-              <button onClick={() => elegirModo(MODO_FUTBOL_FAN.id)} className="card"
-                style={estiloTarjetaModo("var(--cyan)")}>
-                <span className="display" style={{ fontSize: 14, color: "#fff" }}>{MODO_FUTBOL_FAN.nombre}</span>
-              </button>
             </div>
 
-            <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={reiniciar}>
+            <button className="btn btn-ghost btn-block" style={{ marginTop: 24 }} onClick={reiniciar}>
               Volver
-            </button>
-
-            <Banner />
-          </div>
-        )}
-
-        {step === "catalogo-divertidos" && (
-          <div className="rise">
-            <div style={{ textAlign: "center", marginBottom: 18 }}>
-              <div className="eyebrow" style={{ marginBottom: 6, color: "var(--magenta)" }}>Exclusivo de este evento</div>
-              <h2 className="display" style={{ fontSize: 20 }}>Divertidos</h2>
-            </div>
-
-            {avisoMismaFoto || (
-              <div className="chip" style={{
-                marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
-                lineHeight: 1.5, textAlign: "center", justifyContent: "center",
-              }}>
-                Consejo: salen mejor con la cara de frente y bien iluminada. Funcionan con una o varias personas.
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {MODOS_DIVERTIDOS.map((modo) => (
-                <button key={modo.id} onClick={() => elegirModo(modo.id)} className="card"
-                  style={estiloTarjetaModo("var(--magenta)")}>
-                  <span className="display" style={{ fontSize: 14, color: "#fff" }}>{modo.nombre}</span>
-                </button>
-              ))}
-            </div>
-
-            <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={() => setStep("catalogo")}>
-              Volver al catálogo
-            </button>
-
-            <Banner />
-          </div>
-        )}
-
-        {step === "catalogo-futbol" && (
-          <div className="rise">
-            <div style={{ textAlign: "center", marginBottom: 18 }}>
-              <div className="eyebrow" style={{ marginBottom: 6 }}>Fútbol Fan</div>
-              <h2 className="display" style={{ fontSize: 20 }}>Elige tu compañero de selfie</h2>
-            </div>
-
-            {avisoMismaFoto || consejoSelfie}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {SUBMODOS_FUTBOL.map((sub) => (
-                <button key={sub.id} onClick={() => elegirSubmodoFutbol(sub.id)} className="card"
-                  style={estiloTarjetaModo("var(--border)")}>
-                  <span className="display" style={{ fontSize: 14, color: "#fff" }}>{sub.nombre}</span>
-                </button>
-              ))}
-            </div>
-
-            <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={() => setStep("catalogo")}>
-              Volver al catálogo
             </button>
 
             <Banner />
@@ -1105,6 +1039,151 @@ export default function Asistente({ evento }) {
         )}
       </div>
     </div>
+  );
+}
+
+/* Fila deslizable de modos, con pistas de deslizamiento:
+   tarjeta asomada, degradado + flecha que late (se puede tocar en computador),
+   empujoncito inicial (solo la primera vez) y flecha que se oculta al final. */
+function FilaModos({ idFila, titulo, modos, destacada, indice, onElegir }) {
+  const carrilRef = useRef(null);
+  const [alFinal, setAlFinal] = useState(false);
+
+  useEffect(() => {
+    const carril = carrilRef.current;
+    if (!carril) return undefined;
+
+    const revisar = () => {
+      setAlFinal(carril.scrollLeft + carril.clientWidth >= carril.scrollWidth - 8);
+    };
+    revisar();
+    carril.addEventListener("scroll", revisar, { passive: true });
+
+    const timers = [];
+    const sinMovimiento = window.matchMedia
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!sinMovimiento && !filasEmpujadas.has(idFila) && carril.scrollWidth > carril.clientWidth) {
+      filasEmpujadas.add(idFila);
+      timers.push(setTimeout(() => {
+        carril.style.scrollSnapType = "none";
+        carril.scrollTo({ left: 70, behavior: "smooth" });
+        timers.push(setTimeout(() => {
+          carril.scrollTo({ left: 0, behavior: "smooth" });
+          timers.push(setTimeout(() => { carril.style.scrollSnapType = ""; }, 600));
+        }, 650));
+      }, 700 + indice * 250));
+    }
+
+    return () => {
+      carril.removeEventListener("scroll", revisar);
+      timers.forEach(clearTimeout);
+      carril.style.scrollSnapType = "";
+    };
+  }, [idFila, indice]);
+
+  const avanzar = () => {
+    const carril = carrilRef.current;
+    if (carril) carril.scrollBy({ left: carril.clientWidth * 0.8, behavior: "smooth" });
+  };
+
+  return (
+    <div>
+      {destacada && (
+        <div className="eyebrow" style={{ color: "var(--magenta)", marginBottom: 4 }}>
+          Exclusivo de este evento
+        </div>
+      )}
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "baseline",
+        gap: 10, marginBottom: 10,
+      }}>
+        <span className="display" style={{ fontSize: 16, color: destacada ? "var(--magenta)" : "var(--text)" }}>
+          {titulo}
+        </span>
+        <span style={{ fontSize: 11.5, color: "var(--text-faint)", whiteSpace: "nowrap" }}>
+          {modos.length} modos · desliza
+        </span>
+      </div>
+
+      <div style={{ position: "relative" }}>
+        <div ref={carrilRef} className="nexo-carril">
+          {modos.map((modo) => (
+            <TarjetaModo
+              key={modo.id}
+              modo={modo}
+              destacada={destacada}
+              onClick={() => onElegir(modo.id)}
+            />
+          ))}
+        </div>
+
+        {/* Degradado del borde derecho */}
+        <div style={{
+          position: "absolute", top: 0, bottom: 0, right: -16, width: 64,
+          background: "linear-gradient(90deg, transparent 0%, var(--bg) 85%)",
+          pointerEvents: "none", opacity: alFinal ? 0 : 1, transition: "opacity 0.3s ease",
+        }} />
+
+        {/* Flecha que late (en computador se puede tocar para avanzar) */}
+        <button
+          onClick={avanzar}
+          aria-label={`Ver más modos de ${titulo}`}
+          className="nexo-flecha"
+          style={{
+            position: "absolute", top: "50%", right: -4, width: 34, height: 34, marginTop: -17,
+            borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+            background: "var(--tint-cyan)", border: "1px solid var(--cyan)", color: "var(--cyan)",
+            cursor: "pointer", padding: 0, zIndex: 2,
+            opacity: alFinal ? 0 : 1, pointerEvents: alFinal ? "none" : "auto",
+            transition: "opacity 0.3s ease",
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* Tarjeta de un modo con su portada (public/portadas/<id>.webp).
+   Si la portada no carga, queda un fondo oscuro con el nombre. */
+function TarjetaModo({ modo, destacada, onClick }) {
+  const [sinPortada, setSinPortada] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        position: "relative", flex: "0 0 136px", aspectRatio: "3 / 4",
+        borderRadius: 14, overflow: "hidden", padding: 0, cursor: "pointer",
+        scrollSnapAlign: "start", textAlign: "left", fontFamily: "var(--font-body)",
+        border: `1px solid ${destacada ? "var(--magenta)" : "var(--border)"}`,
+        background: "linear-gradient(160deg, var(--surface), var(--bg))",
+      }}
+    >
+      {!sinPortada && (
+        <img
+          src={`/portadas/${modo.id}.webp`}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          onError={() => setSinPortada(true)}
+          style={{
+            position: "absolute", inset: 0, width: "100%", height: "100%",
+            objectFit: "cover", display: "block",
+          }}
+        />
+      )}
+      <span className="display" style={{
+        position: "absolute", left: 0, right: 0, bottom: 0,
+        padding: "28px 10px 10px", fontSize: 13, lineHeight: 1.2, color: "#fff",
+        background: "linear-gradient(180deg, rgba(5,5,10,0) 0%, rgba(5,5,10,0.92) 65%)",
+      }}>
+        {modo.nombre}
+      </span>
+    </button>
   );
 }
 
