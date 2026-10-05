@@ -1,23 +1,26 @@
 import { useEffect } from "react";
 import Icon from "./Icons";
 
-/* Logo NexoPix: imagen cromada azul y rubí (public/nexopix_logo.webp).
-   La mezcla "screen" hace desaparecer el fondo negro de la imagen
-   sobre los fondos oscuros de la app. */
+/* Logo NexoPix: imagen cromada azul y rubí (public/nexopix_logo.png, fondo transparente).
+   Solo se fija el alto; el ancho se calcula solo para no deformarlo.
+   Si no cabe en su contenedor, se achica parejo sin aplastarse. */
 const LOGO_URL = "/nexopix_logo.png";
-const LOGO_PROPORCION = 1200 / 287;
 
 export function Logo({ size = 22, sub = true }) {
   const alto = Math.round(size * 1.7);
-  const ancho = Math.round(alto * LOGO_PROPORCION);
   return (
-    <div style={{ lineHeight: 1, display: "inline-flex", flexDirection: "column", alignItems: "center" }}>
+    <div style={{
+      lineHeight: 1, display: "inline-flex", flexDirection: "column",
+      alignItems: "center", maxWidth: "100%", flexShrink: 0,
+    }}>
       <img
         src={LOGO_URL}
         alt="NexoPix"
-        width={ancho}
         height={alto}
-        style={{ display: "block", width: ancho, height: alto, mixBlendMode: "screen" }}
+        style={{
+          display: "block", height: alto, width: "auto",
+          maxWidth: "100%", objectFit: "contain",
+        }}
       />
       {sub && (
         <div className="eyebrow" style={{ fontSize: 9, marginTop: 2, color: "var(--text-faint)" }}>
