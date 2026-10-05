@@ -59,8 +59,15 @@ const FILAS_CATALOGO = [
 // Filas que ya hicieron el empujoncito inicial (solo la primera vez por visita).
 const filasEmpujadas = new Set();
 
-// Velocidad de las cintas de la marquesina (píxeles por segundo).
+// Marquesina del inicio: velocidad (píxeles por segundo), tamaño de cada
+// portada y espacio que ocupa cada una con su separación.
 const VELOCIDAD_CINTA = 26;
+const ANCHO_TARJETA_CINTA = 84;
+const ALTO_TARJETA_CINTA = 112;
+const PASO_CINTA = 92;
+// Cada cinta repite sus portadas hasta cubrir al menos este ancho,
+// así nunca queda un hueco en pantallas anchas.
+const ANCHO_MINIMO_CINTA = 900;
 
 // Modo Especial: el prompt y las referencias los define el admin por evento.
 const MODO_ESPECIAL = "especial";
@@ -1136,22 +1143,25 @@ function BarraSuperior({ nombreEvento, onVolver }) {
   );
 }
 
-/* Marquesina del inicio: dos cintas de portadas que se mueven sin parar
-   en sentidos opuestos. Las mueve JavaScript cuadro a cuadro (no CSS),
-   así funciona igual en iPhone, Android y computador, incluso con
-   "reducir movimiento" o modo de bajo consumo. Tocarla abre el catálogo. */
+/* Marquesina del inicio: dos cintas de portadas que se mueven sin parar,
+   la de arriba hacia la izquierda y la de abajo hacia la derecha.
+   Cada portada se mueve por separado (piezas chicas), porque el motor
+   del iPhone no dibuja bien una tira muy ancha en movimiento. Cuando una
+   portada sale por un lado, reaparece por el otro. Tocarla abre el catálogo. */
 function Marquesina({ modos, onClick }) {
-  const cintaArribaRef = useRef(null);
-  const cintaAbajoRef = useRef(null);
+  const tarjetasRef = useRef([[], []]);
   const mitad = Math.ceil(modos.length / 2);
-  const cintas = [modos.slice(0, mitad), modos.slice(mitad)];
+
+  // Cada cinta repite sus portadas hasta cubrir el ancho mínimo.
+  const cintas = [modos.slice(0, mitad), modos.slice(mitad)].map((lista) => {
+    if (!lista.length) return lista;
+    let completa = [...lista];
+    while (completa.length * PASO_CINTA < ANCHO_MINIMO_CINTA) completa = completa.concat(lista);
+    return completa;
+  });
 
   useEffect(() => {
-    // dir -1: se mueve a la izquierda. dir 1: se mueve a la derecha.
-    const estado = [
-      { ref: cintaArribaRef, x: 0, dir: -1 },
-      { ref: cintaAbajoRef, x: 0, dir: 1 },
-    ];
+    const avance = [0, 0];
     let cuadro = 0;
     let anterior = performance.now();
 
@@ -1159,15 +1169,21 @@ function Marquesina({ modos, onClick }) {
       // Si la pestaña estuvo oculta, no "salta": máximo 0,1 s por cuadro.
       const dt = Math.min(ahora - anterior, 100) / 1000;
       anterior = ahora;
-      estado.forEach((c) => {
-        const el = c.ref.current;
-        if (!el) return;
-        const anchoMitad = el.scrollWidth / 2;
-        if (!anchoMitad) return;
-        c.x = (c.x + VELOCIDAD_CINTA * dt) % anchoMitad;
-        const desplazamiento = c.dir < 0 ? -c.x : c.x - anchoMitad;
-        el.style.transform = `translate3d(${desplazamiento}px, 0, 0)`;
+
+      tarjetasRef.current.forEach((fila, i) => {
+        const total = fila.length * PASO_CINTA;
+        if (!total) return;
+        const dir = i === 0 ? -1 : 1; // arriba a la izquierda, abajo a la derecha
+        avance[i] = (avance[i] + VELOCIDAD_CINTA * dt) % total;
+        fila.forEach((el, j) => {
+          if (!el) return;
+          let x = (j * PASO_CINTA + dir * avance[i]) % total;
+          if (x < 0) x += total;
+          // Se resta un paso para que la portada que reaparece entre desde fuera de la pantalla.
+          el.style.transform = `translate3d(${x - PASO_CINTA}px, 0, 0)`;
+        });
       });
+
       cuadro = requestAnimationFrame(paso);
     };
 
@@ -1188,20 +1204,18 @@ function Marquesina({ modos, onClick }) {
       }}
     >
       {cintas.map((lista, i) => (
-        <div
-          key={i}
-          ref={i === 0 ? cintaArribaRef : cintaAbajoRef}
-          style={{
-            display: "flex", width: "max-content", marginTop: i ? 8 : 0,
-            willChange: "transform", transform: "translate3d(0, 0, 0)",
-          }}
-        >
-          {[...lista, ...lista].map((modo, j) => (
-            <div key={`${modo.id}-${j}`} style={{
-              flex: "0 0 84px", height: 112, marginRight: 8,
-              borderRadius: 10, overflow: "hidden",
-              border: "1px solid var(--border)", background: "var(--surface)",
-            }}>
+        <div key={i} style={{ position: "relative", height: ALTO_TARJETA_CINTA, marginTop: i ? 8 : 0 }}>
+          {lista.map((modo, j) => (
+            <div
+              key={`${modo.id}-${j}`}
+              ref={(el) => { tarjetasRef.current[i][j] = el; }}
+              style={{
+                position: "absolute", top: 0, left: 0,
+                width: ANCHO_TARJETA_CINTA, height: ALTO_TARJETA_CINTA,
+                borderRadius: 10, overflow: "hidden",
+                border: "1px solid var(--border)", background: "var(--surface)",
+              }}
+            >
               <img
                 src={`/portadas/${modo.id}.webp`}
                 alt=""
@@ -1214,7 +1228,7 @@ function Marquesina({ modos, onClick }) {
         </div>
       ))}
 
-      {/* Bordes difuminados (degradados encima, compatibles con Safari) */}
+      {/* Bordes difuminados (degradados encima) */}
       <div style={{
         position: "absolute", top: 0, bottom: 0, left: 0, width: 48, pointerEvents: "none",
         background: "linear-gradient(90deg, var(--bg) 0%, transparent 100%)",
@@ -1334,6 +1348,8 @@ function FilaModos({ idFila, titulo, modos, destacada, indice, onElegir }) {
 }
 
 /* Tarjeta de un modo con su portada (public/portadas/<id>.webp).
+   Carga inmediata (sin "lazy"): el iPhone falla con carga a demanda
+   dentro de filas que se deslizan de lado, y las portadas pesan poco.
    Si la portada no carga, queda un fondo oscuro con el nombre. */
 function TarjetaModo({ modo, destacada, onClick }) {
   const [sinPortada, setSinPortada] = useState(false);
@@ -1352,7 +1368,6 @@ function TarjetaModo({ modo, destacada, onClick }) {
         <img
           src={`/portadas/${modo.id}.webp`}
           alt=""
-          loading="lazy"
           draggable={false}
           onError={() => setSinPortada(true)}
           style={{
