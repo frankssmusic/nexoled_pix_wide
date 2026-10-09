@@ -5,9 +5,9 @@ import Icon from "../components/Icons";
 import { Vacio, Logo } from "../components/UI";
 import MiniJuego from "../components/MiniJuego";
 
-// Bloque DIVERTIDOS: filtros tipo Snapchat, solo disponibles en eventos premium.
+// Bloque DIVERTIDOS: filtros tipo Snapchat, disponibles en eventos Pro y Premium.
 // En eventos Base se muestran con candado. El servidor (api/generarFoto.js)
-// también los bloquea si el evento no es premium.
+// también los bloquea si el evento es Base.
 const MODOS_DIVERTIDOS = [
   { id: "ojos_saltones", nombre: "Ojos Saltones" },
   { id: "maquillaje_tia", nombre: "El Gran Maquillaje" },
@@ -19,10 +19,13 @@ const MODOS_DIVERTIDOS = [
   { id: "cara_aplastada", nombre: "Gruñón" },
 ];
 
+// Tiers que incluyen los Divertidos.
+const TIERS_CON_DIVERTIDOS = ["pro", "premium"];
+
 // Catálogo en filas deslizables. El id interno de cada modo no cambia;
 // la portada se busca en public/portadas/<id>.webp
 const FILAS_CATALOGO = [
-  { id: "divertidos", titulo: "Divertidos", premium: true, modos: MODOS_DIVERTIDOS },
+  { id: "divertidos", titulo: "Divertidos", exclusiva: true, modos: MODOS_DIVERTIDOS },
   {
     id: "cine", titulo: "Cine y series", modos: [
       { id: "game_of_thrones", nombre: "Juego de Tronos" },
@@ -96,7 +99,7 @@ const MAX_CONSULTAS = 90;
 const CONSEJOS_INSTRUCTIVO = [
   { emoji: "\u{1F4A1}", fuerte: "Busca buena luz", resto: " para tu selfie", color: "var(--cyan-rgb)" },
   { emoji: "\u{1F465}", fuerte: "Sugerencia:", resto: " máximo 2 personas para un resultado óptimo", color: "var(--magenta-rgb)" },
-  { emoji: "\u{23F3}", fuerte: "El modo HD puede tardar hasta 4 minutos,", resto: " ten paciencia", color: "var(--cyan-rgb)" },
+  { emoji: "\u{23F3}", fuerte: "Algunos modos tardan un par de minutos,", resto: " ten paciencia", color: "var(--cyan-rgb)" },
   { emoji: "\u{1F4F1}", fuerte: "No cierres la app", resto: " ni bloquees el celular mientras se genera", color: "var(--magenta-rgb)" },
 ];
 const EMOJI_BRILLO = "\u{2728}";
@@ -142,7 +145,7 @@ export default function Asistente({ evento }) {
   const audioCtxRef = useRef(null);
 
   const mensaje = evento?.mensaje_subida || "Subir foto";
-  const esPremium = evento?.motor_ia === "premium";
+  const conDivertidos = TIERS_CON_DIVERTIDOS.includes(evento?.motor_ia);
   const iaActiva = evento?.ia_habilitada !== false;
   const claveInstructivo = evento ? `funfoto_instructivo_${evento.id}` : null;
 
@@ -154,14 +157,14 @@ export default function Asistente({ evento }) {
 
   // Marquesina: solo los modos que el invitado puede usar en este evento.
   const modosMarquesina = FILAS_CATALOGO
-    .filter((f) => !f.premium || esPremium)
+    .filter((f) => !f.exclusiva || conDivertidos)
     .flatMap((f) => f.modos);
 
-  // Catálogo: en Premium, Divertidos va primero y destacado.
+  // Catálogo: en Pro y Premium, Divertidos va primero y destacado.
   // En Base, Divertidos va al final con candado (para mostrar el upgrade).
-  const filasCatalogo = esPremium
+  const filasCatalogo = conDivertidos
     ? FILAS_CATALOGO
-    : [...FILAS_CATALOGO.filter((f) => !f.premium), ...FILAS_CATALOGO.filter((f) => f.premium)];
+    : [...FILAS_CATALOGO.filter((f) => !f.exclusiva), ...FILAS_CATALOGO.filter((f) => f.exclusiva)];
 
   // Estado de la foto que se le informa al minijuego.
   let estadoFoto = "generando";
@@ -678,6 +681,11 @@ export default function Asistente({ evento }) {
           0%, 100% { transform: translateY(0) scale(1); }
           50% { transform: translateY(-4px) scale(1.12); }
         }
+        @keyframes nexoLatidoJuego {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 22px rgba(var(--magenta-rgb),0.30), 0 0 0 1px rgba(var(--magenta-rgb),0.55); }
+          50% { transform: scale(1.03); box-shadow: 0 0 40px rgba(var(--cyan-rgb),0.45), 0 0 0 1px rgba(var(--cyan-rgb),0.75); }
+        }
+        @keyframes nexoGirar { to { transform: rotate(360deg); } }
         .nexo-carril {
           display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden;
           scroll-snap-type: x mandatory; scroll-padding-left: 16px;
@@ -843,8 +851,8 @@ export default function Asistente({ evento }) {
                   idFila={fila.id}
                   titulo={fila.titulo}
                   modos={fila.modos}
-                  destacada={fila.premium === true && esPremium}
-                  bloqueada={fila.premium === true && !esPremium}
+                  destacada={fila.exclusiva === true && conDivertidos}
+                  bloqueada={fila.exclusiva === true && !conDivertidos}
                   indice={i}
                   onElegir={elegirModo}
                 />
@@ -900,13 +908,70 @@ export default function Asistente({ evento }) {
         {step === "ia" && (
           <div className="rise">
             <div className="card" style={{ textAlign: "center" }}>
-              {(generandoIA || errorIA) && preview && (
+
+              {/* ---------- Generando: miniatura + estado + juego visible ---------- */}
+              {generandoIA && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
+                    {preview && (
+                      <div style={{ position: "relative", flexShrink: 0 }}>
+                        <img src={preview} alt="Tu foto" style={{
+                          width: 78, aspectRatio: "9/16", objectFit: "cover", display: "block",
+                          borderRadius: 12, border: "1px solid var(--border)", opacity: 0.75,
+                        }} />
+                        <div style={{
+                          position: "absolute", left: "50%", top: "50%",
+                          width: 30, height: 30, marginLeft: -15, marginTop: -15, borderRadius: "50%",
+                          border: "3px solid rgba(var(--cyan-rgb),0.2)",
+                          borderTopColor: "var(--cyan)",
+                          animation: "nexoGirar 0.9s linear infinite",
+                        }} />
+                      </div>
+                    )}
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="display" style={{ fontSize: 17, marginBottom: 6 }}>
+                        Generando con IA<span style={{ display: "inline-block", width: 24, textAlign: "left" }}>{puntosGenerando}</span>
+                      </div>
+                      <p style={{ color: "var(--cyan)", fontSize: 13, lineHeight: 1.5, minHeight: 40 }}>
+                        {mensajeGenerando}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => { prepararAudio(); setJugando(true); }}
+                    style={{
+                      width: "100%", marginTop: 18, padding: "18px 16px", borderRadius: 16,
+                      border: "none", cursor: "pointer",
+                      fontFamily: "var(--font-body)", color: "#fff",
+                      background: "linear-gradient(135deg, rgba(var(--magenta-rgb),0.30), rgba(var(--cyan-rgb),0.20))",
+                      animation: "nexoLatidoJuego 1.8s ease-in-out infinite",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+                    }}
+                  >
+                    <span style={{ fontSize: 30, lineHeight: 1 }}>{EMOJI_CONTROL}</span>
+                    <span style={{ textAlign: "left" }}>
+                      <span style={{ display: "block", fontSize: 17, fontWeight: 800 }}>Juega mientras esperas</span>
+                      <span style={{ display: "block", fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>
+                        Te avisamos cuando tu foto esté lista
+                      </span>
+                    </span>
+                  </button>
+
+                  <p style={{ color: "var(--text-faint)", fontSize: 12, lineHeight: 1.6, marginTop: 14 }}>
+                    Puede tardar desde unos segundos hasta un par de minutos. No cierres esta pantalla:
+                    te avisamos con un sonido cuando esté lista.
+                  </p>
+                </>
+              )}
+
+              {/* ---------- Error: se muestra la selfie original ---------- */}
+              {!generandoIA && errorIA && preview && (
                 <img src={preview} alt="Tu foto" style={{
                   width: "100%", maxWidth: 280, margin: "0 auto 18px",
                   borderRadius: "var(--r-md)", aspectRatio: "9/16",
                   objectFit: "cover", display: "block",
                   border: "1px solid var(--border)",
-                  opacity: generandoIA ? 0.5 : 1,
                 }} />
               )}
 
@@ -921,42 +986,6 @@ export default function Asistente({ evento }) {
                   <button className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }}
                     onClick={descargarFoto} disabled={descargandoFoto}>
                     <Icon.Download size={14} /> {descargandoFoto ? "Preparando..." : "Descargar"}
-                  </button>
-                </>
-              )}
-
-              {generandoIA && (
-                <>
-                  <style>{`@keyframes nexoGirar { to { transform: rotate(360deg); } }`}</style>
-                  <div style={{
-                    width: 46, height: 46, margin: "0 auto 16px", borderRadius: "50%",
-                    border: "3px solid rgba(var(--cyan-rgb),0.15)",
-                    borderTopColor: "var(--cyan)",
-                    animation: "nexoGirar 0.9s linear infinite",
-                  }} />
-                  <div className="display" style={{ fontSize: 17, marginBottom: 8 }}>
-                    Generando con IA<span style={{ display: "inline-block", width: 24, textAlign: "left" }}>{puntosGenerando}</span>
-                  </div>
-                  <p style={{ color: "var(--cyan)", fontSize: 13.5, lineHeight: 1.6, marginBottom: 6, minHeight: 22 }}>
-                    {mensajeGenerando}
-                  </p>
-                  <p style={{ color: "var(--text-dim)", fontSize: 12.5, lineHeight: 1.6 }}>
-                    Puede tardar hasta 4 minutos. No cierres esta pantalla, te avisamos con un sonido cuando esté lista.
-                  </p>
-
-                  <button
-                    onClick={() => { prepararAudio(); setJugando(true); }}
-                    style={{
-                      width: "100%", marginTop: 18, padding: "14px 16px", borderRadius: 14,
-                      border: "1px solid rgba(var(--magenta-rgb),0.55)", cursor: "pointer",
-                      fontSize: 15, fontWeight: 700, fontFamily: "var(--font-body)", color: "#fff",
-                      background: "linear-gradient(135deg, rgba(var(--magenta-rgb),0.22), rgba(var(--cyan-rgb),0.14))",
-                      boxShadow: "0 0 26px rgba(var(--magenta-rgb),0.2)",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                    }}
-                  >
-                    <span style={{ fontSize: 20 }}>{EMOJI_CONTROL}</span>
-                    Jugar mientras esperas
                   </button>
                 </>
               )}
@@ -1315,7 +1344,7 @@ function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onEleg
       )}
       {bloqueada && (
         <div className="eyebrow" style={{ color: "var(--text-faint)", marginBottom: 4 }}>
-          {EMOJI_CANDADO} Disponible en eventos Premium
+          {EMOJI_CANDADO} Disponible en eventos Pro y Premium
         </div>
       )}
       <div style={{
@@ -1382,7 +1411,7 @@ function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onEleg
         }}>
           <span style={{ fontSize: 20, flexShrink: 0 }}>{EMOJI_CANDADO}</span>
           <span style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.5, flex: 1 }}>
-            Estos modos vienen incluidos en los eventos Premium de FUNfoto.
+            Estos modos vienen incluidos en los eventos Pro y Premium de FUNfoto.
           </span>
           <button
             onClick={() => setAvisoBloqueo(false)}
@@ -1410,7 +1439,7 @@ function TarjetaModo({ modo, destacada, bloqueada, onClick }) {
   return (
     <button
       onClick={onClick}
-      aria-label={bloqueada ? `${modo.nombre}, disponible en eventos Premium` : modo.nombre}
+      aria-label={bloqueada ? `${modo.nombre}, disponible en eventos Pro y Premium` : modo.nombre}
       style={{
         position: "relative", flex: "0 0 136px", aspectRatio: "3 / 4",
         borderRadius: 14, overflow: "hidden", padding: 0, cursor: "pointer",

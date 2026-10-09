@@ -7,8 +7,10 @@ import Icon from "../components/Icons";
 import { LogoTitulo, Toast, Stat, Vacio, Modal } from "../components/UI";
 
 // Costos por foto IA de respaldo (US$). Los reales se editan en el Admin
-// (tabla configuracion). base -> Seedream 5.0 Pro 1k | premium -> GPT Image 2
-const COSTOS_RESPALDO = { base: 0.045, premium: 0.08 };
+// (tabla configuracion).
+// base -> Seedream 5.0 Pro 1k | pro -> GPT Image 2.5 Flare medium
+// (caso de 2 imágenes) | premium -> GPT Image 2 medium
+const COSTOS_RESPALDO = { base: 0.045, pro: 0.054, premium: 0.08 };
 
 const URL_PRECIOS_WAVESPEED = "https://wavespeed.ai/models";
 
@@ -25,10 +27,20 @@ const TOPE_SEGURIDAD_SIN_CUOTA = 30;
 // Los archivos huérfanos solo se borran si tienen más de estas horas.
 const HORAS_MINIMAS_HUERFANO = 24;
 
+// Tiers (modelo de generación). El modelo va entre paréntesis.
 const TIERS = [
-  { id: "base", nombre: "Base" },
-  { id: "premium", nombre: "Premium" },
+  { id: "base", nombre: "Base (Seedream 5)" },
+  { id: "pro", nombre: "Pro (GPT Flare)" },
+  { id: "premium", nombre: "Premium (GPT Image 2)" },
 ];
+
+const NOMBRE_TIER = { base: "Base", pro: "Pro", premium: "Premium" };
+
+const DETALLE_TIER = {
+  base: "Base: motor Seedream 5, sin modos Divertidos ni Especial.",
+  pro: "Pro: motor GPT Image 2.5 Flare, rápido. Incluye Divertidos y Especial.",
+  premium: "Premium: motor GPT Image 2, máxima calidad y más lento. Incluye Divertidos y Especial.",
+};
 
 // Contenido IA del evento. "Grilla normal" es el Especial apagado.
 const OPCIONES_CONTENIDO = [
@@ -39,11 +51,11 @@ const OPCIONES_CONTENIDO = [
 
 const DETALLE_CONTENIDO = {
   grilla: "Sin Especial. El invitado ve la grilla de modos según el tier.",
-  especial_grilla: "Especial destacado + grilla completa con Divertidos. Siempre Premium.",
-  solo_especial: "El invitado va directo al Especial, sin grilla. Siempre Premium.",
+  especial_grilla: "Especial destacado + grilla completa con Divertidos. Requiere Pro o Premium.",
+  solo_especial: "El invitado va directo al Especial, sin grilla. Requiere Pro o Premium.",
 };
 
-const MENSAJE_BLOQUEO_PREMIUM = "Con Especial el evento siempre va con Premium";
+const MENSAJE_BLOQUEO_ESPECIAL = "Con Especial el evento va en Pro o Premium";
 
 // Planes de fotos por persona.
 const PLANES_FOTOS = [
@@ -59,11 +71,17 @@ const clp = (n) => `$${Math.round(n).toLocaleString("es-CL")}`;
 const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 const MENSAJE_FALTAN_INVITADOS = "Ingresa el número de invitados para calcular la cuota y el precio";
 
-// Todo evento con Especial va con Premium (el Especial siempre usa GPT Image).
+// Tier válido guardado en el evento (valores antiguos o vacíos -> base).
+const tierNormalizado = (motor) => (["base", "pro", "premium"].includes(motor) ? motor : "base");
+
+// El Especial necesita Pro o Premium.
 const tieneEspecialContenido = (contenido) => !!contenido && contenido !== "grilla";
 
+// Si hay Especial y el tier es Base, se sube a Pro.
+const tierConEspecial = (tier, conEspecial) => (conEspecial && tier === "base" ? "pro" : tier);
+
 // Costo por foto según el tier y los precios cargados.
-const costoDeTier = (tier, costos) => (tier === "premium" ? costos.premium : costos.base);
+const costoDeTier = (tier, costos) => costos[tier] ?? costos.base;
 
 // Precio sugerido (con IVA) de N fotos IA según el tier, los precios y el dólar.
 const precioSugerido = (n, tier, dolar, costos) =>
@@ -189,7 +207,7 @@ export default function Admin() {
   const [opsSel, setOpsSel] = useState([]);
   const [dolar, setDolar] = useState({ valor: CLP_POR_USD_RESPALDO, fecha: null, oficial: false });
   const [costos, setCostos] = useState(COSTOS_RESPALDO);
-  const [costosEdit, setCostosEdit] = useState({ base: "", premium: "" });
+  const [costosEdit, setCostosEdit] = useState({ base: "", pro: "", premium: "" });
   const [costosActualizado, setCostosActualizado] = useState(null);
   const [guardandoCostos, setGuardandoCostos] = useState(false);
 
@@ -239,7 +257,7 @@ export default function Admin() {
     (async () => {
       const { data, error: err } = await supabase
         .from("configuracion").select("clave, valor, actualizado")
-        .in("clave", ["costo_base_usd", "costo_premium_usd"]);
+        .in("clave", ["costo_base_usd", "costo_pro_usd", "costo_premium_usd"]);
       if (err || !data) return;
       const mapa = {};
       let ultima = null;
@@ -249,18 +267,22 @@ export default function Admin() {
       });
       const nuevos = {
         base: mapa.costo_base_usd > 0 ? mapa.costo_base_usd : COSTOS_RESPALDO.base,
+        pro: mapa.costo_pro_usd > 0 ? mapa.costo_pro_usd : COSTOS_RESPALDO.pro,
         premium: mapa.costo_premium_usd > 0 ? mapa.costo_premium_usd : COSTOS_RESPALDO.premium,
       };
       setCostos(nuevos);
-      setCostosEdit({ base: String(nuevos.base), premium: String(nuevos.premium) });
+      setCostosEdit({ base: String(nuevos.base), pro: String(nuevos.pro), premium: String(nuevos.premium) });
       setCostosActualizado(ultima);
     })();
   }, [loggedIn]);
 
   const guardarCostos = async () => {
-    const base = parseFloat(String(costosEdit.base).replace(",", "."));
-    const premium = parseFloat(String(costosEdit.premium).replace(",", "."));
-    if (!(base > 0 && base < 2) || !(premium > 0 && premium < 2)) {
+    const leer = (v) => parseFloat(String(v).replace(",", "."));
+    const base = leer(costosEdit.base);
+    const pro = leer(costosEdit.pro);
+    const premium = leer(costosEdit.premium);
+    const valido = (x) => x > 0 && x < 2;
+    if (!valido(base) || !valido(pro) || !valido(premium)) {
       setToast("Revisa los precios: deben ser mayores que 0 y menores que 2 dólares");
       return;
     }
@@ -268,11 +290,12 @@ export default function Admin() {
     const ahora = new Date().toISOString();
     const { error: err } = await supabase.from("configuracion").upsert([
       { clave: "costo_base_usd", valor: base, actualizado: ahora },
+      { clave: "costo_pro_usd", valor: pro, actualizado: ahora },
       { clave: "costo_premium_usd", valor: premium, actualizado: ahora },
     ]);
     setGuardandoCostos(false);
     if (err) { setToast("No se pudieron guardar los precios"); return; }
-    setCostos({ base, premium });
+    setCostos({ base, pro, premium });
     setCostosActualizado(ahora);
     setToast("Precios de IA actualizados");
   };
@@ -333,7 +356,7 @@ export default function Admin() {
 
       const plan = planPorId(nuevoPlan);
       const conEspecial = tieneEspecialContenido(nuevoContenido);
-      const motor = conEspecial ? "premium" : nuevoMotor;
+      const motor = tierConEspecial(nuevoMotor, conEspecial);
 
       const clave = Math.random().toString(36).slice(2, 8);
       const { error: err } = await supabase.from("eventos").insert({
@@ -546,23 +569,25 @@ export default function Admin() {
   };
 
   const cambiarTier = (ev, motor) => {
-    if ((ev.motor_ia || "base") === motor) return;
+    if (tierNormalizado(ev.motor_ia) === motor) return;
     if (tieneEspecialContenido(ev.contenido_ia) && motor === "base") {
-      setToast(MENSAJE_BLOQUEO_PREMIUM);
+      setToast(MENSAJE_BLOQUEO_ESPECIAL);
       return;
     }
-    actualizar(ev, { motor_ia: motor },
-      motor === "premium" ? "Evento cambiado a Premium" : "Evento cambiado a Base");
+    actualizar(ev, { motor_ia: motor }, `Evento cambiado a ${NOMBRE_TIER[motor]}`);
   };
 
   const cambiarContenido = (ev, valor) => {
     if ((ev.contenido_ia || "grilla") === valor) return;
-    const campos = { contenido_ia: valor, especial_habilitado: tieneEspecialContenido(valor) };
-    if (tieneEspecialContenido(valor)) campos.motor_ia = "premium";
+    const conEspecial = tieneEspecialContenido(valor);
+    const campos = { contenido_ia: valor, especial_habilitado: conEspecial };
+    const tierActual = tierNormalizado(ev.motor_ia);
+    const tierNuevo = tierConEspecial(tierActual, conEspecial);
+    if (tierNuevo !== tierActual) campos.motor_ia = tierNuevo;
     const mensajes = {
       grilla: "Especial apagado",
-      especial_grilla: "Especial + grilla activado (Premium)",
-      solo_especial: "Solo Especial activado (Premium)",
+      especial_grilla: `Especial + grilla activado (${NOMBRE_TIER[tierNuevo]})`,
+      solo_especial: `Solo Especial activado (${NOMBRE_TIER[tierNuevo]})`,
     };
     actualizar(ev, campos, mensajes[valor]);
   };
@@ -715,7 +740,7 @@ export default function Admin() {
   const invNuevoNum = parseInt(nuevosInvitados, 10) || 0;
   const cuotaNueva = invNuevoNum * planNuevo.fotos;
   const nuevoConEspecial = tieneEspecialContenido(nuevoContenido);
-  const motorNuevoVista = nuevoConEspecial ? "premium" : nuevoMotor;
+  const motorNuevoVista = tierConEspecial(nuevoMotor, nuevoConEspecial);
 
   return (
     <div style={{ padding: "20px 16px 60px", maxWidth: 900, margin: "0 auto" }}>
@@ -799,21 +824,21 @@ export default function Admin() {
           </div>
 
           <div style={{ marginTop: 14 }}>
-            <label className="label">Tier contratado</label>
+            <label className="label">Modelo de generación (tier)</label>
             <SelectorPills opciones={TIERS} valor={motorNuevoVista}
               onChange={(m) => {
                 if (nuevoConEspecial && m === "base") {
-                  setToast(MENSAJE_BLOQUEO_PREMIUM);
+                  setToast(MENSAJE_BLOQUEO_ESPECIAL);
                   return;
                 }
                 setNuevoMotor(m);
               }}
               destacado="premium" />
-            {nuevoConEspecial && (
-              <div style={{ fontSize: 11, color: "var(--magenta)", marginTop: 6 }}>
-                Bloqueado en Premium porque el evento tiene Especial.
-              </div>
-            )}
+            <div style={{ fontSize: 11, color: nuevoConEspecial ? "var(--magenta)" : "var(--text-faint)", marginTop: 6 }}>
+              {nuevoConEspecial
+                ? "Con Especial el mínimo es Pro. Puedes elegir Pro o Premium."
+                : DETALLE_TIER[motorNuevoVista]}
+            </div>
           </div>
 
           <div style={{ marginTop: 14 }}>
@@ -838,7 +863,6 @@ export default function Admin() {
                 fotosPorPersona={planNuevo.fotos}
                 tier={motorNuevoVista}
                 costos={costos}
-                conEspecial={nuevoConEspecial}
                 dolar={dolar.valor}
               />
             </div>
@@ -899,10 +923,10 @@ export default function Admin() {
             const abierto = expandido === ev.id;
             const urls = urlsDe(ev.slug);
             const camposEd = editando[ev.id] || {};
-            const tierEv = ev.motor_ia === "premium" ? "premium" : "base";
+            const tierEv = tierNormalizado(ev.motor_ia);
             const contenidoEv = ev.contenido_ia || "grilla";
             const tieneEspecial = tieneEspecialContenido(contenidoEv);
-            const tierCot = tieneEspecial ? "premium" : tierEv;
+            const tierCot = tierConEspecial(tierEv, tieneEspecial);
 
             const planVista = planPorId(camposEd.plan ?? ev.cuota_plan);
             const planGuardado = planPorId(ev.cuota_plan);
@@ -923,6 +947,11 @@ export default function Admin() {
                         <span className={`dot ${ev.evento_cerrado ? "dot-closed" : "dot-live"}`} />
                         {ev.evento_cerrado ? "Cerrado" : "En vivo"}
                       </span>
+                      {tierEv === "pro" && (
+                        <span className="chip" style={{ color: "var(--cyan)", borderColor: "var(--cyan)" }}>
+                          Pro
+                        </span>
+                      )}
                       {tierEv === "premium" && (
                         <span className="chip" style={{ color: "var(--magenta)", borderColor: "var(--magenta)" }}>
                           Premium
@@ -1056,15 +1085,13 @@ export default function Admin() {
 
                       {/* --- Tier contratado --- */}
                       <div>
-                        <label className="label">Tier contratado</label>
+                        <label className="label">Modelo de generación (tier)</label>
                         <SelectorPills opciones={TIERS} valor={tierEv}
                           onChange={(motor) => cambiarTier(ev, motor)} destacado="premium" />
-                        <div style={{ fontSize: 11, color: tieneEspecial ? "var(--magenta)" : "var(--text-faint)", marginTop: 6 }}>
-                          {tieneEspecial
-                            ? "Bloqueado en Premium porque el evento tiene Especial."
-                            : tierEv === "premium"
-                              ? "Premium: motor GPT Image + modos Divertidos. Se guarda al tocarlo."
-                              : "Base: motor Seedream 5, sin modos Divertidos. Se guarda al tocarlo."}
+                        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
+                          {DETALLE_TIER[tierEv]}
+                          {tieneEspecial ? " Con Especial el mínimo es Pro." : ""}
+                          {" "}Se guarda al tocarlo.
                         </div>
                       </div>
 
@@ -1106,7 +1133,6 @@ export default function Admin() {
                           fotosPorPersona={planVista.fotos}
                           tier={tierCot}
                           costos={costos}
-                          conEspecial={tieneEspecial}
                           dolar={dolar.valor}
                         />
                       ) : (
@@ -1325,13 +1351,19 @@ export default function Admin() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginTop: 14 }}>
           <div>
-            <label className="label">Base (Seedream) · US$ por foto</label>
+            <label className="label">Base (Seedream 5) · US$ por foto</label>
             <input className="input" type="number" step="0.001" min="0"
               value={costosEdit.base}
               onChange={(e) => setCostosEdit((p) => ({ ...p, base: e.target.value }))} />
           </div>
           <div>
-            <label className="label">Premium y Especial (GPT Image) · US$ por foto</label>
+            <label className="label">Pro (GPT Image 2.5 Flare) · US$ por foto</label>
+            <input className="input" type="number" step="0.001" min="0"
+              value={costosEdit.pro}
+              onChange={(e) => setCostosEdit((p) => ({ ...p, pro: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label">Premium (GPT Image 2) · US$ por foto</label>
             <input className="input" type="number" step="0.001" min="0"
               value={costosEdit.premium}
               onChange={(e) => setCostosEdit((p) => ({ ...p, premium: e.target.value }))} />
@@ -1340,6 +1372,7 @@ export default function Admin() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
           <div style={{ fontSize: 11, color: "var(--text-faint)", lineHeight: 1.5 }}>
             Se usan en todas las cotizaciones y en el registro de costos de cada foto.
+            En Pro conviene usar el costo con 2 imágenes (US$0,054) para no quedarse corto.
             {costosActualizado
               ? ` Última actualización: ${new Date(costosActualizado).toLocaleDateString("es-CL")}.`
               : ""}
@@ -1501,7 +1534,7 @@ function ContadorIA({ usadas, cuota }) {
 }
 
 /* Cuadro de cuota y cotización (se usa al crear y al editar un evento) */
-function Cotizacion({ cuota, extra, invitados, fotosPorPersona, tier, costos, conEspecial, dolar }) {
+function Cotizacion({ cuota, extra, invitados, fotosPorPersona, tier, costos, dolar }) {
   const costoPorFoto = costoDeTier(tier, costos);
   const costoUsd = cuota * costoPorFoto;
   const costoClp = costoUsd * dolar;
@@ -1527,8 +1560,7 @@ function Cotizacion({ cuota, extra, invitados, fotosPorPersona, tier, costos, co
       <FilaMonto etiqueta="Total sugerido" valor={clp(precioTotal)} color="var(--ok)" fuerte />
       <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8, lineHeight: 1.5 }}>
         Negocia entre el costo máximo y el total. Cálculo: {invitados || "?"} invitados x {fotosPorPersona} fotos
-        {extra > 0 ? ` + ${extra} extra` : ""}, a US${costoPorFoto} por foto (tier {tier}), dólar {clp(dolar)}.
-        {conEspecial ? " Con Especial se cotiza todo a precio GPT Image." : ""}
+        {extra > 0 ? ` + ${extra} extra` : ""}, a US${costoPorFoto} por foto (tier {NOMBRE_TIER[tier] || tier}), dólar {clp(dolar)}.
         {" "}Solo cubre el costo de IA, no el arriendo de la pantalla.
       </div>
     </div>

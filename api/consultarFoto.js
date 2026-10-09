@@ -13,16 +13,19 @@
 //
 // COSTOS (Oct 2026): el costo por foto se lee de la tabla `configuracion`
 // (precios editables desde el Admin). Si no se puede leer, usa los de respaldo.
+// Tiers: base (Seedream), pro (GPT Image 2.5 Flare), premium (GPT Image 2).
 
 const { createClient } = require('@supabase/supabase-js');
 
 // Costos de respaldo (US$ por foto) si no se puede leer la configuración.
-const COSTOS_RESPALDO = { base: 0.045, premium: 0.08 };
+// Pro usa el caso más caro de Flare (2 imágenes de referencia).
+const COSTOS_RESPALDO = { base: 0.045, pro: 0.054, premium: 0.08 };
 
 // Qué precio corresponde a cada motor.
 const TIPO_POR_MOTOR = {
   seedream_4_5: 'base',
   seedream_5_0: 'base',
+  gpt_image_flare: 'pro',
   gpt_image_medium: 'premium',
 };
 
@@ -32,12 +35,13 @@ async function leerCostos(supabase) {
     const { data, error } = await supabase
       .from('configuracion')
       .select('clave, valor')
-      .in('clave', ['costo_base_usd', 'costo_premium_usd']);
+      .in('clave', ['costo_base_usd', 'costo_pro_usd', 'costo_premium_usd']);
     if (error || !data) return COSTOS_RESPALDO;
     const mapa = {};
     data.forEach((f) => { mapa[f.clave] = Number(f.valor); });
     return {
       base: mapa.costo_base_usd > 0 ? mapa.costo_base_usd : COSTOS_RESPALDO.base,
+      pro: mapa.costo_pro_usd > 0 ? mapa.costo_pro_usd : COSTOS_RESPALDO.pro,
       premium: mapa.costo_premium_usd > 0 ? mapa.costo_premium_usd : COSTOS_RESPALDO.premium,
     };
   } catch {

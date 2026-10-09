@@ -3,30 +3,54 @@
 // Minijuego de naves para la espera de FUNfoto IA.
 // - La nave avanza (fondo de estrellas en 3 capas) y dispara sola.
 // - Se mueve arrastrando el dedo.
-// - Sube de nivel cada 15 segundos: enemigos más rápidos y tipos nuevos
+// - Sube de nivel cada 12 segundos: enemigos más rápidos y tipos nuevos
 //   (zigzag desde nivel 2, blindado desde nivel 3, tirador desde nivel 4).
+// - Dificultad general +20% (oct 2026): con el tier Pro la espera es más
+//   corta, así que el juego se pone exigente antes.
 // - Se pierde una vida: al chocar con un alien, al recibir un disparo
 //   enemigo, o cada 3 aliens que escapan vivos por abajo.
 // - Cajas de premio: vida, arma doble/triple, escudo y disparo rápido.
 // - Al terminar se guarda el puntaje con un apodo y se muestra el top 5
 //   del evento (solo lo ve quien jugó).
 // - Cuando la foto está lista, el juego se pausa y la persona decide.
+// - Los colores zafiro y rubí se leen de tokens.css al iniciar la partida.
 //
 // Los emojis van como códigos para que no se corrompan al copiar.
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../supabase";
 
+// Colores del juego. "cian" y "magenta" se reemplazan al iniciar por los
+// de la paleta (--cyan y --magenta de tokens.css).
 const COLORES = {
-  cian: "#00e5ff",
-  magenta: "#e040fb",
+  cian: "#2ec5ff",
+  magenta: "#ff0a54",
+  cianRgb: "46,197,255",
   rojo: "#ff2b4d",
+  violeta: "#9b6bff",
+  naranja: "#ff8a3d",
   amarillo: "#ffd23f",
   verde: "#3dff9a",
 };
 
+// Lee los colores de la paleta desde tokens.css.
+function aplicarPaleta() {
+  try {
+    const estilos = getComputedStyle(document.documentElement);
+    const cian = estilos.getPropertyValue("--cyan").trim();
+    const magenta = estilos.getPropertyValue("--magenta").trim();
+    const cianRgb = estilos.getPropertyValue("--cyan-rgb").trim();
+    if (cian) COLORES.cian = cian;
+    if (magenta) COLORES.magenta = magenta;
+    if (cianRgb) COLORES.cianRgb = cianRgb.replace(/\s/g, "");
+  } catch {
+    // Si no se puede leer, quedan los colores de respaldo.
+  }
+}
+
 const PUNTAJE_MAXIMO = 500000;
-const SEGUNDOS_POR_NIVEL = 15;
+const SEGUNDOS_POR_NIVEL = 12;
+const FACTOR_DIFICULTAD = 1.2;
 const VIDAS_INICIALES = 3;
 const VIDAS_MAXIMAS = 5;
 const ESCAPES_POR_VIDA = 3;
@@ -79,16 +103,17 @@ const apodoValido = (apodo) => {
 };
 
 const colorEnemigo = (tipo) => {
-  if (tipo === "zigzag") return COLORES.rojo;
+  if (tipo === "zigzag") return COLORES.naranja;
   if (tipo === "blindado") return COLORES.amarillo;
   if (tipo === "tirador") return COLORES.rojo;
-  return COLORES.magenta;
+  return COLORES.violeta;
 };
 
 /* =====================================================================
    MOTOR DEL JUEGO (dibuja en un canvas, fuera de React por rendimiento)
    ===================================================================== */
 function crearJuego(canvas, alTerminar) {
+  aplicarPaleta();
   const ctx = canvas.getContext("2d");
   let W = 0;
   let H = 0;
@@ -131,7 +156,7 @@ function crearJuego(canvas, alTerminar) {
     invulnerableHasta: 1500,
     flashHasta: 0,
     ultimoDisparo: 0,
-    proximoEnemigo: 900,
+    proximoEnemigo: 800,
     proximaCaja: 6000,
     bannerNivelHasta: 1600,
     nave: { x: W / 2, y: H - 110, objetivoX: W / 2 },
@@ -195,7 +220,7 @@ function crearJuego(canvas, alTerminar) {
   const crearEnemigo = () => {
     const tipos = tiposDisponibles();
     const tipo = tipos[Math.floor(Math.random() * tipos.length)];
-    const vel = 1.4 + e.nivel * 0.22 + Math.random() * 0.6;
+    const vel = (1.4 + e.nivel * 0.22 + Math.random() * 0.6) * FACTOR_DIFICULTAD;
     const en = {
       tipo,
       x: 24 + Math.random() * (W - 48),
@@ -204,7 +229,7 @@ function crearJuego(canvas, alTerminar) {
       vida: 1,
       radio: 15,
       fase: Math.random() * Math.PI * 2,
-      proximoTiro: 1200 + Math.random() * 800,
+      proximoTiro: (1200 + Math.random() * 800) / FACTOR_DIFICULTAD,
     };
     if (tipo === "zigzag") en.radio = 14;
     if (tipo === "blindado") { en.vida = 3; en.radio = 19; en.vy = vel * 0.65; }
@@ -337,11 +362,11 @@ function crearJuego(canvas, alTerminar) {
       e.ultimoDisparo = e.tiempo;
     }
 
-    // Aparición de enemigos y cajas.
+    // Aparición de enemigos (20% más seguido) y cajas.
     e.proximoEnemigo -= dt;
     if (e.proximoEnemigo <= 0) {
       crearEnemigo();
-      e.proximoEnemigo = Math.max(280, 1000 - e.nivel * 80) * (0.7 + Math.random() * 0.6);
+      e.proximoEnemigo = (Math.max(280, 1000 - e.nivel * 80) / FACTOR_DIFICULTAD) * (0.7 + Math.random() * 0.6);
     }
     e.proximaCaja -= dt;
     if (e.proximaCaja <= 0) {
@@ -364,9 +389,9 @@ function crearJuego(canvas, alTerminar) {
           const dx = e.nave.x - en.x;
           const dy = e.nave.y - en.y;
           const d = Math.hypot(dx, dy) || 1;
-          const v = 3.2 + e.nivel * 0.1;
+          const v = (3.2 + e.nivel * 0.1) * FACTOR_DIFICULTAD;
           e.balasEnemigas.push({ x: en.x, y: en.y + 12, vx: (dx / d) * v, vy: (dy / d) * v });
-          en.proximoTiro = 1400 + Math.random() * 900;
+          en.proximoTiro = (1400 + Math.random() * 900) / FACTOR_DIFICULTAD;
         }
       }
     });
@@ -497,7 +522,7 @@ function crearJuego(canvas, alTerminar) {
     // Escudo.
     if (e.tiempo < e.escudoHasta) {
       ctx.save();
-      ctx.strokeStyle = "rgba(0,229,255,0.8)";
+      ctx.strokeStyle = `rgba(${COLORES.cianRgb},0.8)`;
       ctx.lineWidth = 2;
       ctx.shadowColor = COLORES.cian;
       ctx.shadowBlur = 16;
@@ -967,7 +992,7 @@ export default function MiniJuego({ eventoId, estadoFoto, onVerFoto, onCerrar })
           {fotoTerminada && (
             <div style={{
               fontSize: 12, color: "var(--cyan)", marginBottom: 14,
-              padding: "8px 12px", borderRadius: 10, background: "rgba(0,229,255,0.08)",
+              padding: "8px 12px", borderRadius: 10, background: "rgba(var(--cyan-rgb),0.08)",
             }}>
               {fotoConError ? "Tu foto tuvo un problema, la revisas al salir." : "Tu foto ya está lista."}
             </div>
@@ -1059,10 +1084,10 @@ function Panel({ children }) {
       <style>{`@keyframes nexoPanel { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: none; } }`}</style>
       <div style={{
         width: "100%", maxWidth: 360, maxHeight: "92vh", overflowY: "auto",
-        background: "linear-gradient(160deg, #16162a 0%, #0d0d16 100%)",
-        border: "1px solid rgba(224,64,251,0.45)", borderRadius: 22,
+        background: "linear-gradient(160deg, var(--surface-2) 0%, var(--surface) 100%)",
+        border: "1px solid rgba(var(--magenta-rgb),0.45)", borderRadius: 22,
         padding: "24px 20px 20px", textAlign: "center",
-        boxShadow: "0 0 60px rgba(224,64,251,0.18), 0 20px 50px rgba(0,0,0,0.5)",
+        boxShadow: "0 0 60px rgba(var(--magenta-rgb),0.18), 0 20px 50px rgba(0,0,0,0.5)",
         animation: "nexoPanel 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both",
       }}>
         {children}
@@ -1076,8 +1101,8 @@ function Emoji({ children }) {
     <div style={{
       width: 62, height: 62, borderRadius: "50%", margin: "0 auto 14px",
       display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30,
-      background: "radial-gradient(circle, rgba(224,64,251,0.28), rgba(0,229,255,0.08))",
-      boxShadow: "0 0 26px rgba(224,64,251,0.3), 0 0 0 1px rgba(224,64,251,0.4)",
+      background: "radial-gradient(circle, rgba(var(--magenta-rgb),0.28), rgba(var(--cyan-rgb),0.08))",
+      boxShadow: "0 0 26px rgba(var(--magenta-rgb),0.3), 0 0 0 1px rgba(var(--magenta-rgb),0.4)",
     }}>
       {children}
     </div>
@@ -1091,7 +1116,7 @@ function BotonPrincipal({ children, onClick, disabled }) {
       cursor: disabled ? "wait" : "pointer", fontSize: 15, fontWeight: 700,
       fontFamily: "var(--font-body)", color: "#0a0a0f", opacity: disabled ? 0.6 : 1,
       background: "linear-gradient(90deg, var(--cyan), var(--magenta))",
-      boxShadow: "0 0 24px rgba(0,229,255,0.25)",
+      boxShadow: "0 0 24px rgba(var(--cyan-rgb),0.25)",
     }}>
       {children}
     </button>
@@ -1116,7 +1141,7 @@ function FilaRanking({ posicion, apodo, puntaje, esMio }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 12,
-      background: esMio ? "rgba(0,229,255,0.12)" : "rgba(255,255,255,0.03)",
+      background: esMio ? "var(--tint-cyan)" : "rgba(255,255,255,0.03)",
       border: `1px solid ${esMio ? "var(--cyan)" : "rgba(255,255,255,0.07)"}`,
     }}>
       <div style={{ width: 30, fontSize: medalla ? 20 : 14, fontWeight: 800, color: "var(--text-dim)", textAlign: "center" }}>

@@ -8,15 +8,21 @@
 // El frontend, despues de recibir el taskId, llama repetidamente a
 // api/consultarFoto.js (cada ~3 seg) hasta que la imagen este lista.
 //
-// RUTEO POR MOTOR (Oct 2026):
+// TIERS (Oct 2026): evento.motor_ia puede ser 'base', 'pro' o 'premium'.
+// - base    -> Seedream 5.0 Pro (1k)
+// - pro     -> GPT Image 2.5 Flare (medium)
+// - premium -> GPT Image 2 (medium)
+//
+// RUTEO POR MOTOR:
 // - ESPECIAL: usa el prompt y hasta 2 imagenes de referencia guardados en el
-//   evento, SIEMPRE con GPT Image. Orden de imagenes: selfie, ref 1, ref 2.
+//   evento. Pro -> Flare, Premium -> GPT Image 2. Si el evento quedara en
+//   Base, se usa Flare (el Especial parte desde Pro).
+//   Orden de imagenes: selfie, ref 1, ref 2.
 // - Simpsons y Barbie SIEMPRE usan Seedream 4.5.
 // - Futbol Fan Argentina (futbol_fan_4) SIEMPRE usa Seedream 5.0.
-// - Los modos DIVERTIDOS SIEMPRE usan GPT Image 2 (medium) y solo estan
-//   disponibles en eventos premium.
-// - Todo lo demas usa evento.motor_ia: 'base' -> Seedream 5.0 Pro (1k),
-//   'premium' -> GPT Image 2 (medium).
+// - Los modos DIVERTIDOS solo estan disponibles en Pro y Premium:
+//   Pro -> Flare, Premium -> GPT Image 2.
+// - Todo lo demas usa el motor del tier.
 //
 // CONTENIDO IA DEL EVENTO:
 // - 'grilla': sin Especial.
@@ -53,6 +59,17 @@ const MOTORES = {
       output_format: 'jpeg',
     }),
   },
+  gpt_image_flare: {
+    endpoint: 'https://api.wavespeed.ai/api/v3/openai/gpt-image-2.5-flare/edit',
+    armarBody: (images, prompt) => ({
+      images,
+      prompt,
+      aspect_ratio: '9:16',
+      resolution: '1k',
+      quality: 'medium',
+      output_format: 'jpeg',
+    }),
+  },
   gpt_image_medium: {
     endpoint: 'https://api.wavespeed.ai/api/v3/openai/gpt-image-2/edit',
     armarBody: (images, prompt) => ({
@@ -65,6 +82,16 @@ const MOTORES = {
   },
 };
 
+// Motor principal de cada tier.
+const MOTOR_POR_TIER = {
+  base: 'seedream_5_0',
+  pro: 'gpt_image_flare',
+  premium: 'gpt_image_medium',
+};
+
+// Tiers que incluyen los modos Divertidos.
+const TIERS_CON_DIVERTIDOS = ['pro', 'premium'];
+
 const MODO_ESPECIAL = 'especial';
 
 // Modos que SIEMPRE usan Seedream 4.5, sin importar el tier contratado.
@@ -73,7 +100,7 @@ const MODOS_FIJOS_SEEDREAM_45 = ['simpsons', 'barbie'];
 // Modos que SIEMPRE usan Seedream 5.0, sin importar el tier contratado.
 const MODOS_FIJOS_SEEDREAM_50 = ['futbol_fan_4'];
 
-// Bloque DIVERTIDOS: SIEMPRE usan GPT Image y SOLO en eventos premium.
+// Bloque DIVERTIDOS: solo en eventos Pro y Premium.
 const MODOS_DIVERTIDOS = [
   'ojos_saltones',
   'maquillaje_tia',
@@ -94,11 +121,18 @@ const MENSAJE_CUOTA_AGOTADA =
 const MENSAJE_ESPECIAL_NO_ACTIVO = 'El Especial no está disponible en este evento';
 const MENSAJE_ESPECIAL_SIN_PROMPT = 'El Especial de este evento no está disponible todavía. Avisa al organizador.';
 const MENSAJE_SOLO_ESPECIAL = 'Este modo no está disponible en este evento';
+// Debe contener "plan premium" para que el Asistente no muestre "Intentar de nuevo".
+const MENSAJE_DIVERTIDOS_BLOQUEADOS = 'Este modo solo está disponible en el plan Pro o en el plan premium';
+
+// Normaliza el tier guardado en el evento (valores antiguos o vacios -> base).
+function tierDelEvento(motorIa) {
+  return MOTOR_POR_TIER[motorIa] ? motorIa : 'base';
+}
 
 // Decide que motor usar segun el modo pedido y el tier contratado.
-function resolverMotor(modo, motorDelEvento) {
+function resolverMotor(modo, tier) {
   if (modo === MODO_ESPECIAL) {
-    return 'gpt_image_medium';
+    return tier === 'premium' ? 'gpt_image_medium' : 'gpt_image_flare';
   }
   if (MODOS_FIJOS_SEEDREAM_45.includes(modo)) {
     return 'seedream_4_5';
@@ -106,10 +140,7 @@ function resolverMotor(modo, motorDelEvento) {
   if (MODOS_FIJOS_SEEDREAM_50.includes(modo)) {
     return 'seedream_5_0';
   }
-  if (MODOS_DIVERTIDOS.includes(modo)) {
-    return 'gpt_image_medium';
-  }
-  return motorDelEvento === 'premium' ? 'gpt_image_medium' : 'seedream_5_0';
+  return MOTOR_POR_TIER[tier];
 }
 
 // Devuelve un cupo reservado. Si falla, solo se registra en el log.
@@ -176,6 +207,7 @@ module.exports = async function handler(req, res) {
     });
   }
 
+  const tier = tierDelEvento(evento.motor_ia);
   const contenido = evento.contenido_ia || 'grilla';
 
   if (esEspecial) {
@@ -191,11 +223,9 @@ module.exports = async function handler(req, res) {
     return res.status(403).json({ error: MENSAJE_SOLO_ESPECIAL });
   }
 
-  // Los modos DIVERTIDOS solo estan incluidos en el plan premium.
-  if (MODOS_DIVERTIDOS.includes(modo) && evento.motor_ia !== 'premium') {
-    return res.status(403).json({
-      error: 'Este modo solo está disponible en el plan premium',
-    });
+  // Los modos DIVERTIDOS solo estan incluidos en Pro y Premium.
+  if (MODOS_DIVERTIDOS.includes(modo) && !TIERS_CON_DIVERTIDOS.includes(tier)) {
+    return res.status(403).json({ error: MENSAJE_DIVERTIDOS_BLOQUEADOS });
   }
 
   // ---------------------------------------------------------------------
@@ -216,7 +246,7 @@ module.exports = async function handler(req, res) {
 
   // Desde aqui el cupo ya esta descontado. Si algo falla al crear la tarea,
   // se devuelve en el catch.
-  const motorId = resolverMotor(modo, evento.motor_ia);
+  const motorId = resolverMotor(modo, tier);
   const motor = MOTORES[motorId];
 
   try {
