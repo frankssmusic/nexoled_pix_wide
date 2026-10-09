@@ -128,10 +128,14 @@ export default function Pantalla({ evento: eventoInicial, fotos }) {
               <QRCodeSVG value={urlSubida} size={230} bgColor="#ffffff" fgColor="#0a0a0f" level="H" />
             </div>
             <div style={{ textAlign: "left" }}>
-              <div style={{ marginBottom: 22 }}>
-                <Logo size={22} sub={false} />
+              {/* Logo grande con el degradado de la marca: es el protagonista */}
+              <div style={{ marginBottom: 20 }}>
+                <Logo size={44} sub={false} degradado />
               </div>
-              <div className="display grad-text" style={{ fontSize: 46, lineHeight: 1.05, marginBottom: 14 }}>
+              {/* Misma fuente del logo, en blanco y un poco más chica */}
+              <div className="display" style={{
+                fontSize: 40, lineHeight: 1.05, marginBottom: 16, color: "var(--text)",
+              }}>
                 Sube tu foto
               </div>
               <div style={{ fontSize: 19, color: "var(--text-dim)", lineHeight: 1.5 }}>

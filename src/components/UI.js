@@ -1,11 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Icon from "./Icons";
 
 /* Logo selfiA en monocromo (oct 2026).
    "self" y "A" son las letras de la tipografía Syne ExtraBold convertidas a
    trazos vectoriales (no dependen de que cargue la fuente). La "i" es una
    personita: el punto es la cabeza y el bracito sostiene un teléfono.
-   Usa el color del texto (var(--text)), así se adapta al fondo. */
+   Por defecto usa el color del texto (var(--text)). Con "degradado" se pinta
+   con el degradado zafiro a rubí de la marca. */
 const SELFIA_VIEWBOX = "30 -815 4500 840";
 const SELFIA_PROPORCION = 4500 / 840;
 const SELFIA_LETRAS =
@@ -16,7 +17,10 @@ const SELFIA_LETRAS =
   "M3604 -97V-247H4288V-97ZM3380 0 3809 -640H4087L4520 0H4245L3874 -573H4023L3655 0Z";
 
 /* Dibujo del logo. El tamaño lo define el estilo que recibe. */
-function SelfiaSVG({ style }) {
+function SelfiaSVG({ style, degradado = false }) {
+  // Id único por logo, para que el degradado no choque si hay varios en pantalla.
+  const idRef = useRef(`selfia-grad-${Math.random().toString(36).slice(2, 9)}`);
+  const relleno = degradado ? `url(#${idRef.current})` : "currentColor";
   return (
     <svg
       viewBox={SELFIA_VIEWBOX}
@@ -24,13 +28,22 @@ function SelfiaSVG({ style }) {
       aria-label="selfiA"
       style={{ display: "block", color: "var(--text)", ...style }}
     >
-      <g fill="currentColor">
+      {degradado && (
+        <defs>
+          <linearGradient id={idRef.current} gradientUnits="userSpaceOnUse"
+            x1="30" y1="0" x2="4530" y2="0">
+            <stop offset="0" style={{ stopColor: "var(--cyan)" }} />
+            <stop offset="1" style={{ stopColor: "var(--magenta)" }} />
+          </linearGradient>
+        </defs>
+      )}
+      <g fill={relleno}>
         <path d={SELFIA_LETRAS} />
         {/* La "i" personita: cuerpo, cabeza, brazo y teléfono */}
         <rect x="2930" y="-500" width="180" height="500" rx="40" />
         <circle cx="3020" cy="-680" r="110" />
         <line x1="3090" y1="-400" x2="3240" y2="-590"
-          stroke="currentColor" strokeWidth="70" strokeLinecap="round" />
+          stroke={relleno} strokeWidth="70" strokeLinecap="round" />
         <rect x="3200" y="-780" width="110" height="190" rx="25"
           transform="rotate(18 3255 -685)" />
       </g>
@@ -39,13 +52,14 @@ function SelfiaSVG({ style }) {
 }
 
 /* Logo de tamaño fijo. "size" define el alto (alto = size x 2 píxeles).
+   "degradado" lo pinta con los colores de la marca.
    "sub" se mantiene por compatibilidad, pero ya no muestra texto extra. */
 // eslint-disable-next-line no-unused-vars
-export function Logo({ size = 22, sub = true }) {
+export function Logo({ size = 22, sub = true, degradado = false }) {
   const alto = Math.round(size * 2);
   return (
     <div style={{ lineHeight: 1, display: "inline-flex", flexShrink: 0 }}>
-      <SelfiaSVG style={{
+      <SelfiaSVG degradado={degradado} style={{
         height: alto, width: Math.round(alto * SELFIA_PROPORCION), maxWidth: "80vw",
       }} />
     </div>
