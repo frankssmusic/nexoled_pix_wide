@@ -3,12 +3,15 @@
 // Configurador del "Especial de la noche" de un evento.
 // Dirección: /admin/especial/<slug>  (requiere sesión de admin)
 //
-// El tipo de contenido (Grilla / Especial + grilla / Solo Especial) se elige
-// en el Admin principal. Aquí solo se configura:
+// El tipo de contenido (Grilla / Especial + grilla / Solo Especial) y el tier
+// se eligen en el Admin principal. Aquí solo se configura:
 // - Nombre de la tarjeta que ve el invitado
 // - Prompt del Especial (lo lee solo el servidor)
 // - Hasta 2 imágenes de referencia. A la IA se mandan en orden:
 //   1) selfie del invitado, 2) referencia 1, 3) referencia 2
+//
+// El Especial se genera con el modelo del tier del evento:
+// Pro -> GPT Image 2.5 Flare | Premium -> GPT Image 2.
 //
 // Las imágenes con fondo transparente se aplanan sobre un color sólido antes
 // de subirlas, porque la IA lee la transparencia como negro y no ve el logo.
@@ -21,6 +24,13 @@ import { Logo, Toast, Vacio } from "../components/UI";
 const NOMBRES_CONTENIDO = {
   especial_grilla: "Especial + grilla",
   solo_especial: "Solo Especial",
+};
+
+// Modelo que usa el Especial según el tier del evento (el mínimo es Pro).
+const NOMBRES_TIER_ESPECIAL = {
+  base: "Pro (GPT Flare)",
+  pro: "Pro (GPT Flare)",
+  premium: "Premium (GPT Image 2)",
 };
 
 const COLORES_FONDO = [
@@ -130,7 +140,7 @@ export default function EspecialEditor({ slug }) {
     (async () => {
       const { data } = await supabase
         .from("eventos")
-        .select("id, nombre, slug, contenido_ia, especial_label, especial_prompt, especial_ref_url, especial_ref_url_2")
+        .select("id, nombre, slug, motor_ia, contenido_ia, especial_label, especial_prompt, especial_ref_url, especial_ref_url_2")
         .eq("slug", slug)
         .maybeSingle();
       if (data) {
@@ -288,6 +298,8 @@ export default function EspecialEditor({ slug }) {
   }
 
   const colorPersonalizado = !COLORES_FONDO.some((c) => c.id === colorFondo);
+  const tierEspecial = NOMBRES_TIER_ESPECIAL[evento.motor_ia] || NOMBRES_TIER_ESPECIAL.pro;
+  const esPremium = evento.motor_ia === "premium";
 
   return (
     <div style={{ padding: "20px 16px 110px", maxWidth: 820, margin: "0 auto" }}>
@@ -304,9 +316,17 @@ export default function EspecialEditor({ slug }) {
           <Logo size={22} />
           <div className="eyebrow" style={{ marginTop: 10, color: "var(--magenta)" }}>Especial de la noche</div>
           <div className="display" style={{ fontSize: 20, marginTop: 4 }}>{evento.nombre}</div>
-          <span className="chip" style={{ marginTop: 8, color: "#fff", borderColor: "var(--magenta)", background: "rgba(224,64,251,0.18)" }}>
-            {NOMBRES_CONTENIDO[contenido] || contenido}
-          </span>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+            <span className="chip" style={{ color: "#fff", borderColor: "var(--magenta)", background: "rgba(var(--magenta-rgb),0.18)" }}>
+              {NOMBRES_CONTENIDO[contenido] || contenido}
+            </span>
+            <span className="chip" style={{
+              color: esPremium ? "var(--magenta)" : "var(--cyan)",
+              borderColor: esPremium ? "var(--magenta)" : "var(--cyan)",
+            }}>
+              {tierEspecial}
+            </span>
+          </div>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={irAlAdmin}>Volver al Admin</button>
       </header>
@@ -324,8 +344,8 @@ export default function EspecialEditor({ slug }) {
           <div style={{
             padding: "10px 16px", borderRadius: 12, fontSize: 13, fontWeight: 700, color: "#fff",
             border: "1px solid var(--magenta)",
-            background: "linear-gradient(135deg, rgba(224,64,251,0.25), rgba(0,229,255,0.15))",
-            boxShadow: "0 0 18px rgba(224,64,251,0.3)",
+            background: "linear-gradient(135deg, rgba(var(--magenta-rgb),0.25), rgba(var(--cyan-rgb),0.15))",
+            boxShadow: "0 0 18px rgba(var(--magenta-rgb),0.3)",
           }}>
             {EMOJI_BRILLO} {nombre.trim() || "Nombre del Especial"}
           </div>
@@ -348,7 +368,8 @@ export default function EspecialEditor({ slug }) {
         />
         <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8, lineHeight: 1.6 }}>
           {prompt.length.toLocaleString("es-CL")} caracteres. Orden de imágenes que recibe la IA:
-          1) selfie del invitado, 2) referencia 1, 3) referencia 2. Siempre se genera con GPT Image.
+          1) selfie del invitado, 2) referencia 1, 3) referencia 2. Se genera con el modelo del
+          tier del evento: {tierEspecial}. El tier se cambia en el Admin.
         </div>
       </div>
 
@@ -422,11 +443,11 @@ export default function EspecialEditor({ slug }) {
       {/* Barra de guardar */}
       <div style={{
         position: "fixed", left: 0, right: 0, bottom: 0, padding: "12px 16px",
-        background: "rgba(10,10,15,0.92)", borderTop: "1px solid var(--border)",
+        background: "rgba(7,5,12,0.92)", borderTop: "1px solid var(--border)",
         backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
       }}>
         <div style={{ maxWidth: 820, margin: "0 auto", display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ flex: 1, fontSize: 12, color: cambios ? "var(--warn, #f5a623)" : "var(--text-faint)" }}>
+          <div style={{ flex: 1, fontSize: 12, color: cambios ? "var(--warn)" : "var(--text-faint)" }}>
             {cambios ? "Tienes cambios sin guardar" : "Todo guardado"}
           </div>
           <button className="btn btn-primary" onClick={guardar} disabled={guardando || subiendo !== null}>

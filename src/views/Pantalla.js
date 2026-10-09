@@ -123,11 +123,14 @@ export default function Pantalla({ evento: eventoInicial, fotos }) {
           }}>
             <div style={{
               background: "#fff", padding: 18, borderRadius: 18,
-              boxShadow: "0 0 60px rgba(0,229,255,0.25)", flexShrink: 0,
+              boxShadow: "0 0 60px rgba(var(--cyan-rgb),0.25)", flexShrink: 0,
             }}>
               <QRCodeSVG value={urlSubida} size={230} bgColor="#ffffff" fgColor="#0a0a0f" level="H" />
             </div>
             <div style={{ textAlign: "left" }}>
+              <div style={{ marginBottom: 22 }}>
+                <Logo size={22} sub={false} />
+              </div>
               <div className="display grad-text" style={{ fontSize: 46, lineHeight: 1.05, marginBottom: 14 }}>
                 Sube tu foto
               </div>
