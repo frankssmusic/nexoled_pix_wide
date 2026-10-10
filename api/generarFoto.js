@@ -115,7 +115,7 @@ const MODOS_DIVERTIDOS = [
 // Mensaje cuando el evento llega a su cuota. Debe contener la palabra
 // "límite": el Asistente la usa para no mostrar el boton "Intentar de nuevo".
 const MENSAJE_CUOTA_AGOTADA =
-  'Este evento llegó a su límite de fotos. Consulta con el organizador para seguir usando FUNfoto IA.';
+  'Este evento llegó a su límite de fotos. Consulta con el organizador para seguir creando selfies con IA.';
 
 // Los mensajes con "no está disponible" tampoco muestran "Intentar de nuevo".
 const MENSAJE_ESPECIAL_NO_ACTIVO = 'El Especial no está disponible en este evento';
@@ -201,9 +201,10 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'No se pudo verificar el evento' });
   }
 
+  // Debe contener "no está disponible" para que no aparezca "Intentar de nuevo".
   if (evento.ia_habilitada === false) {
     return res.status(403).json({
-      error: 'FUNfoto IA no está disponible para este evento',
+      error: 'La selfie con IA no está disponible en este evento',
     });
   }
 

@@ -313,11 +313,11 @@ export default function Asistente({ evento }) {
     try {
       const resp = await fetch(urlResultadoIA);
       const blob = await resp.blob();
-      const nombre = `funfoto_${Date.now()}.jpg`;
+      const nombre = `selfie_ia_${Date.now()}.jpg`;
       const archivo = new File([blob], nombre, { type: blob.type || "image/jpeg" });
 
       if (esCelular() && navigator.canShare && navigator.canShare({ files: [archivo] })) {
-        await navigator.share({ files: [archivo], title: "Mi FUNfoto IA" });
+        await navigator.share({ files: [archivo], title: "Mi selfie con IA" });
       } else {
         const url = URL.createObjectURL(blob);
         const enlace = document.createElement("a");
@@ -759,7 +759,7 @@ export default function Asistente({ evento }) {
                 <button className="btn btn-primary btn-block"
                   style={{ marginTop: 22, padding: "16px 18px", fontSize: 16 }}
                   onClick={() => abrirFunfoto()}>
-                  Quiero mi FUNfoto
+                  Quiero mi Selfie con IA
                 </button>
               </>
             )}
@@ -818,7 +818,7 @@ export default function Asistente({ evento }) {
           <div className="rise">
             <div style={{ marginBottom: 18 }}>
               <h2 className="display" style={{ fontSize: 24, lineHeight: 1.15 }}>
-                Elige tu <span className="grad-text">FUNfoto</span>
+                Elige tu <span className="grad-text">selfie con IA</span>
               </h2>
               {!avisoMismaFoto && (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
@@ -885,7 +885,7 @@ export default function Asistente({ evento }) {
           <div className="rise">
             <div style={{ textAlign: "center", marginBottom: 24 }}>
               <div className="eyebrow" style={{ marginBottom: 6, color: modoParaSubidaRef.current === MODO_ESPECIAL ? "var(--magenta)" : undefined }}>
-                {modoParaSubidaRef.current === MODO_ESPECIAL ? `${EMOJI_BRILLO} ${nombreEspecial}` : "FUNfoto IA"}
+                {modoParaSubidaRef.current === MODO_ESPECIAL ? `${EMOJI_BRILLO} ${nombreEspecial}` : "Selfie con IA"}
               </div>
               <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
             </div>
@@ -1411,7 +1411,7 @@ function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onEleg
         }}>
           <span style={{ fontSize: 20, flexShrink: 0 }}>{EMOJI_CANDADO}</span>
           <span style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.5, flex: 1 }}>
-            Estos modos vienen incluidos en los eventos Pro y Premium de FUNfoto.
+            Estos modos vienen incluidos en los eventos Pro y Premium.
           </span>
           <button
             onClick={() => setAvisoBloqueo(false)}
@@ -1560,10 +1560,10 @@ function Instructivo({ onAceptar }) {
         </div>
 
         <div className="eyebrow" style={{ textAlign: "center", color: "var(--magenta)", marginBottom: 6 }}>
-          FUNfoto IA
+          Selfie con IA
         </div>
         <h2 className="display" style={{ textAlign: "center", fontSize: 21, marginBottom: 20 }}>
-          Antes de tu FUNfoto
+          Antes de tu selfie
         </h2>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
