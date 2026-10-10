@@ -20,6 +20,8 @@
 //   Orden de imagenes: selfie, ref 1, ref 2.
 // - Simpsons y Barbie SIEMPRE usan Seedream 4.5.
 // - Futbol Fan Argentina (futbol_fan_4) SIEMPRE usa Seedream 5.0.
+// - Futbol Pasion (futbol_pasion) nunca usa Seedream: en Base y Pro usa
+//   Flare, en Premium usa GPT Image 2 (en Seedream no queda bien).
 // - Los modos DIVERTIDOS solo estan disponibles en Pro y Premium:
 //   Pro -> Flare, Premium -> GPT Image 2.
 // - Todo lo demas usa el motor del tier.
@@ -100,6 +102,9 @@ const MODOS_FIJOS_SEEDREAM_45 = ['simpsons', 'barbie'];
 // Modos que SIEMPRE usan Seedream 5.0, sin importar el tier contratado.
 const MODOS_FIJOS_SEEDREAM_50 = ['futbol_fan_4'];
 
+// Modos que como minimo usan Flare (en Base suben a Flare; Premium se queda en GPT Image 2).
+const MODOS_MINIMO_FLARE = ['futbol_pasion'];
+
 // Bloque DIVERTIDOS: solo en eventos Pro y Premium.
 const MODOS_DIVERTIDOS = [
   'ojos_saltones',
@@ -139,6 +144,9 @@ function resolverMotor(modo, tier) {
   }
   if (MODOS_FIJOS_SEEDREAM_50.includes(modo)) {
     return 'seedream_5_0';
+  }
+  if (MODOS_MINIMO_FLARE.includes(modo)) {
+    return tier === 'premium' ? 'gpt_image_medium' : 'gpt_image_flare';
   }
   return MOTOR_POR_TIER[tier];
 }
