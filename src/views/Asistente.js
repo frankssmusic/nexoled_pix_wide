@@ -56,6 +56,7 @@ const FILAS_CATALOGO = [
       { id: "futbol_fan_2", nombre: "Francia" },
       { id: "futbol_fan_3", nombre: "Portugal" },
       { id: "futbol_fan_4", nombre: "Argentina" },
+      { id: "futbol_pasion", nombre: "Fútbol Pasión" },
     ],
   },
 ];
