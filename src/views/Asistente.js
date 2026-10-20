@@ -739,13 +739,13 @@ export default function Asistente({ evento }) {
         .nexo-carril::-webkit-scrollbar { display: none; }
         .nexo-flecha { animation: nexoLatidoFlecha 1.4s ease-in-out infinite; }
         @keyframes nexoLatidoFlecha {
-          0%, 100% { transform: translateX(0); opacity: 0.85; }
-          50% { transform: translateX(5px); opacity: 1; }
+          0%, 100% { transform: translateX(0); }
+          50% { transform: translateX(5px); }
         }
         .nexo-flecha-izq { animation: nexoLatidoFlechaIzq 1.4s ease-in-out infinite; }
         @keyframes nexoLatidoFlechaIzq {
-          0%, 100% { transform: translateX(0); opacity: 0.85; }
-          50% { transform: translateX(-5px); opacity: 1; }
+          0%, 100% { transform: translateX(0); }
+          50% { transform: translateX(-5px); }
         }
         @media (prefers-reduced-motion: reduce) {
           .nexo-flecha, .nexo-flecha-izq { animation: none; }
@@ -1525,8 +1525,9 @@ function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onEleg
             borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
             background: "var(--tint-cyan)", border: "1px solid var(--cyan)", color: "var(--cyan)",
             cursor: "pointer", padding: 0, zIndex: 2,
-            opacity: alInicio ? 0 : 1, pointerEvents: alInicio ? "none" : "auto",
-            transition: "opacity 0.3s ease",
+            opacity: alInicio ? 0 : 1, visibility: alInicio ? "hidden" : "visible",
+            pointerEvents: alInicio ? "none" : "auto",
+            transition: "opacity 0.3s ease, visibility 0.3s ease",
           }}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1552,8 +1553,9 @@ function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onEleg
             borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
             background: "var(--tint-cyan)", border: "1px solid var(--cyan)", color: "var(--cyan)",
             cursor: "pointer", padding: 0, zIndex: 2,
-            opacity: alFinal ? 0 : 1, pointerEvents: alFinal ? "none" : "auto",
-            transition: "opacity 0.3s ease",
+            opacity: alFinal ? 0 : 1, visibility: alFinal ? "hidden" : "visible",
+            pointerEvents: alFinal ? "none" : "auto",
+            transition: "opacity 0.3s ease, visibility 0.3s ease",
           }}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
