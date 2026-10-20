@@ -1410,12 +1410,23 @@ function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onEleg
     const carril = carrilRef.current;
     if (!carril) return undefined;
 
-    const revisar = () => {
-      setAlFinal(carril.scrollLeft + carril.clientWidth >= carril.scrollWidth - 8);
-      setAlInicio(carril.scrollLeft <= 8);
-    };
-    revisar();
-    carril.addEventListener("scroll", revisar, { passive: true });
+    // Las flechas se basan en si la PRIMERA y la ÚLTIMA tarjeta se ven completas
+    // dentro de la fila. Así no dependen de cálculos de scroll, que fallan con
+    // el "imán" de las tarjetas (scroll-snap) y los márgenes de la fila.
+    const primera = carril.firstElementChild;
+    const ultima = carril.lastElementChild;
+    let observador = null;
+    if (primera && ultima && "IntersectionObserver" in window) {
+      observador = new IntersectionObserver((entradas) => {
+        entradas.forEach((e) => {
+          const completa = e.intersectionRatio >= 0.9;
+          if (e.target === primera) setAlInicio(completa);
+          if (e.target === ultima) setAlFinal(completa);
+        });
+      }, { root: carril, threshold: [0, 0.5, 0.9, 1] });
+      observador.observe(primera);
+      if (ultima !== primera) observador.observe(ultima);
+    }
 
     const timers = [];
     const sinMovimiento = window.matchMedia
@@ -1433,7 +1444,7 @@ function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onEleg
     }
 
     return () => {
-      carril.removeEventListener("scroll", revisar);
+      if (observador) observador.disconnect();
       timers.forEach(clearTimeout);
       carril.style.scrollSnapType = "";
     };
