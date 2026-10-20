@@ -742,8 +742,13 @@ export default function Asistente({ evento }) {
           0%, 100% { transform: translateX(0); opacity: 0.85; }
           50% { transform: translateX(5px); opacity: 1; }
         }
+        .nexo-flecha-izq { animation: nexoLatidoFlechaIzq 1.4s ease-in-out infinite; }
+        @keyframes nexoLatidoFlechaIzq {
+          0%, 100% { transform: translateX(0); opacity: 0.85; }
+          50% { transform: translateX(-5px); opacity: 1; }
+        }
         @media (prefers-reduced-motion: reduce) {
-          .nexo-flecha { animation: none; }
+          .nexo-flecha, .nexo-flecha-izq { animation: none; }
         }
       `}</style>
 
@@ -1398,6 +1403,7 @@ function Marquesina({ modos, onClick }) {
 function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onElegir }) {
   const carrilRef = useRef(null);
   const [alFinal, setAlFinal] = useState(false);
+  const [alInicio, setAlInicio] = useState(true);
   const [avisoBloqueo, setAvisoBloqueo] = useState(false);
 
   useEffect(() => {
@@ -1406,6 +1412,7 @@ function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onEleg
 
     const revisar = () => {
       setAlFinal(carril.scrollLeft + carril.clientWidth >= carril.scrollWidth - 8);
+      setAlInicio(carril.scrollLeft <= 8);
     };
     revisar();
     carril.addEventListener("scroll", revisar, { passive: true });
@@ -1435,6 +1442,11 @@ function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onEleg
   const avanzar = () => {
     const carril = carrilRef.current;
     if (carril) carril.scrollBy({ left: carril.clientWidth * 0.8, behavior: "smooth" });
+  };
+
+  const retroceder = () => {
+    const carril = carrilRef.current;
+    if (carril) carril.scrollBy({ left: -carril.clientWidth * 0.8, behavior: "smooth" });
   };
 
   const alTocar = (modoId) => {
@@ -1484,6 +1496,33 @@ function FilaModos({ idFila, titulo, modos, destacada, bloqueada, indice, onEleg
             />
           ))}
         </div>
+
+        {/* Degradado del borde izquierdo: aparece cuando ya avanzaste */}
+        <div style={{
+          position: "absolute", top: 0, bottom: 0, left: -16, width: 64,
+          background: "linear-gradient(270deg, transparent 0%, var(--bg) 85%)",
+          pointerEvents: "none", opacity: alInicio ? 0 : 1, transition: "opacity 0.3s ease",
+        }} />
+
+        {/* Flecha izquierda: aparece cuando hay modos escondidos a la izquierda */}
+        <button
+          onClick={retroceder}
+          aria-label={`Ver modos anteriores de ${titulo}`}
+          className="nexo-flecha-izq"
+          style={{
+            position: "absolute", top: "50%", left: -4, width: 34, height: 34, marginTop: -17,
+            borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+            background: "var(--tint-cyan)", border: "1px solid var(--cyan)", color: "var(--cyan)",
+            cursor: "pointer", padding: 0, zIndex: 2,
+            opacity: alInicio ? 0 : 1, pointerEvents: alInicio ? "none" : "auto",
+            transition: "opacity 0.3s ease",
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 6l-6 6 6 6" />
+          </svg>
+        </button>
 
         {/* Degradado del borde derecho */}
         <div style={{
