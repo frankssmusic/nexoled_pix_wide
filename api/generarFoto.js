@@ -24,7 +24,8 @@
 //   hincha_rival_colocolo) nunca usan Seedream: en Base y Pro usan Flare,
 //   en Premium usan GPT Image 2 (probados en Flare).
 // - Los modos DIVERTIDOS solo estan disponibles en Pro y Premium:
-//   Pro -> Flare, Premium -> GPT Image 2.
+//   Pro -> Flare, Premium -> GPT Image 2. A su prompt se le suma
+//   RELLENO_VERTICAL para que no queden franjas blancas.
 // - Todo lo demas usa el motor del tier.
 //
 // CONTENIDO IA DEL EVENTO:
@@ -118,6 +119,12 @@ const MODOS_DIVERTIDOS = [
   'cara_aplastada',
 ];
 
+// Los Divertidos mantienen el encuadre de la foto original. Si la foto es
+// horizontal, la IA rellenaba con blanco lo que faltaba para el formato 9:16.
+// Esta instruccion se suma al final de todos los prompts Divertidos.
+const RELLENO_VERTICAL =
+  'FULL FRAME: the final image must fill the entire vertical 9:16 frame edge to edge. If the original photo is wider or shorter than this format, naturally extend the same background, scene and bodies above and below to fill the frame, keeping the people at the same size. No blank, white, black or empty areas, no borders, no bars, no letterboxing, no padding.';
+
 // Mensaje cuando el evento llega a su cuota. Debe contener la palabra
 // "límite": el Asistente la usa para no mostrar el boton "Intentar de nuevo".
 const MENSAJE_CUOTA_AGOTADA =
@@ -187,6 +194,9 @@ module.exports = async function handler(req, res) {
       });
     }
     prompt = variante.prompt;
+    if (MODOS_DIVERTIDOS.includes(modo)) {
+      prompt = `${prompt} ${RELLENO_VERTICAL}`;
+    }
     imagenesParaWaveSpeed = variante.refFija
       ? [fotoUrl, `${DOMINIO_BASE}/referencias/${variante.refFija}`]
       : [fotoUrl];
