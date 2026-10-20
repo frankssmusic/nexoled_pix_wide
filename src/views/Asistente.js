@@ -57,9 +57,33 @@ const FILAS_CATALOGO = [
       { id: "futbol_fan_3", nombre: "Portugal" },
       { id: "futbol_fan_4", nombre: "Argentina" },
       { id: "futbol_pasion", nombre: "Fútbol Pasión" },
+      { id: "hincha_rival", nombre: "Hincha Rival" },
     ],
   },
 ];
+
+// Submodos: tarjetas del catálogo que abren una pantalla para elegir una
+// opción antes de la foto. Cada opción es un modo real de lib/prompts.js.
+// La imagen de cada opción es la misma referencia fija que usa la IA.
+const SUBMODOS = {
+  hincha_rival: {
+    titulo: "Hincha Rival",
+    texto: "Broma para tu amigo rival: elige el club y saldrá con su camiseta.",
+    opciones: [
+      { id: "hincha_rival_u", nombre: "U. de Chile", club: "de la U", img: "/referencias/universidad_chile.webp" },
+      { id: "hincha_rival_colocolo", nombre: "Colo-Colo", club: "de Colo-Colo", img: "/referencias/colo_colo.webp" },
+    ],
+  },
+};
+
+// Busca la opción de submodo (y su submodo) a la que pertenece un modo.
+function buscarOpcionSubmodo(modoId) {
+  for (const [idSubmodo, sub] of Object.entries(SUBMODOS)) {
+    const opcion = sub.opciones.find((o) => o.id === modoId);
+    if (opcion) return { idSubmodo, opcion };
+  }
+  return null;
+}
 
 // Filas que ya hicieron el empujoncito inicial (solo la primera vez por visita).
 const filasEmpujadas = new Set();
@@ -133,6 +157,7 @@ export default function Asistente({ evento }) {
   const [reusarFoto, setReusarFoto] = useState(false);
   const [mostrarInstructivo, setMostrarInstructivo] = useState(false);
   const [jugando, setJugando] = useState(false);
+  const [submodoAbierto, setSubmodoAbierto] = useState(null);
   const MAX_INTENTOS_IA = 2;
 
   const fileRef = useRef();
@@ -300,6 +325,12 @@ export default function Asistente({ evento }) {
     if (esSoloEspecial || destinoFunfotoRef.current === MODO_ESPECIAL) {
       destinoFunfotoRef.current = "catalogo";
       setStep("subir");
+      return;
+    }
+    const enSubmodo = buscarOpcionSubmodo(modoParaSubidaRef.current);
+    if (enSubmodo) {
+      setSubmodoAbierto(enSubmodo.idSubmodo);
+      setStep("submodo");
       return;
     }
     setStep("catalogo");
@@ -480,6 +511,11 @@ export default function Asistente({ evento }) {
 
   const elegirModo = (modoId) => {
     prepararAudio();
+    if (SUBMODOS[modoId]) {
+      setSubmodoAbierto(modoId);
+      setStep("submodo");
+      return;
+    }
     if (reusarFoto && file) {
       iniciarConFotoGuardada(modoId);
       return;
@@ -604,6 +640,7 @@ export default function Asistente({ evento }) {
     setConfirmandoIA(false); setIaConfirmada(false); setModoSeleccionado(null);
     modoParaSubidaRef.current = null;
     destinoFunfotoRef.current = "catalogo";
+    setSubmodoAbierto(null);
   };
 
   if (!evento) {
@@ -629,6 +666,7 @@ export default function Asistente({ evento }) {
   // Mientras se genera o tras enviar no hay flecha, para no cortar nada por accidente.
   const accionesVolver = {
     catalogo: reiniciar,
+    submodo: () => setStep("catalogo"),
     "elegir-fuente-normal": () => setStep("subir"),
     "elegir-fuente-ia": volverAlCatalogo,
     revisar: reiniciar,
@@ -661,6 +699,11 @@ export default function Asistente({ evento }) {
       Consejo: usa una selfie con buena luz y tu rostro bien visible, así la IA te reconoce mejor.
     </div>
   );
+
+  // Si el modo elegido es una opción de submodo (ej. Hincha Rival), la
+  // pantalla de la foto muestra la instrucción de la broma y prioriza la galería.
+  const opcionActual = buscarOpcionSubmodo(modoParaSubidaRef.current)?.opcion || null;
+  const subActual = submodoAbierto ? SUBMODOS[submodoAbierto] : null;
 
   const estiloInputOculto = { position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" };
 
@@ -864,6 +907,51 @@ export default function Asistente({ evento }) {
           </div>
         )}
 
+        {/* ===================== SUBMODO (ej. Hincha Rival) ===================== */}
+        {step === "submodo" && subActual && (
+          <div className="rise">
+            <div style={{ textAlign: "center", marginBottom: 18 }}>
+              <h2 className="display" style={{ fontSize: 24, lineHeight: 1.15 }}>
+                <span className="grad-text">{subActual.titulo}</span>
+              </h2>
+            </div>
+            {avisoMismaFoto}
+            <div className="chip" style={{
+              marginBottom: 18, padding: "10px 14px", fontSize: 13,
+              lineHeight: 1.5, textAlign: "center", justifyContent: "center", width: "100%",
+            }}>
+              {subActual.texto}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {subActual.opciones.map((op) => (
+                <button
+                  key={op.id}
+                  onClick={() => elegirModo(op.id)}
+                  style={{
+                    padding: 10, borderRadius: 16, cursor: "pointer",
+                    background: "var(--surface)", border: "1px solid var(--border)",
+                    fontFamily: "var(--font-body)", color: "var(--text)",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+                  }}
+                >
+                  <span style={{
+                    width: "100%", aspectRatio: "1 / 1", borderRadius: 12, overflow: "hidden",
+                    background: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <img src={op.img} alt="" draggable={false}
+                      style={{ width: "88%", height: "88%", objectFit: "contain", display: "block" }} />
+                  </span>
+                  <span className="display" style={{ fontSize: 15 }}>{op.nombre}</span>
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={() => setStep("catalogo")}>
+              Volver al catálogo
+            </button>
+            <Banner />
+          </div>
+        )}
+
         {step === "elegir-fuente-normal" && (
           <div className="rise">
             <div style={{ textAlign: "center", marginBottom: 24 }}>
@@ -890,17 +978,38 @@ export default function Asistente({ evento }) {
               </div>
               <h2 className="display" style={{ fontSize: 20 }}>¿Cómo quieres tu foto?</h2>
             </div>
-            {consejoSelfie}
-            <button className="btn btn-primary btn-block" style={{ marginBottom: 12 }}
-              onClick={() => { prepararAudio(); fileRefIACamara.current?.click(); }}>
-              Tomar foto ahora
-            </button>
-            <button className="btn btn-ghost btn-block"
-              onClick={() => { prepararAudio(); fileRefIAGaleria.current?.click(); }}>
-              Elegir de galería
-            </button>
+            {opcionActual ? (
+              <>
+                <div className="chip" style={{
+                  marginBottom: 18, padding: "10px 14px", fontSize: 12.5,
+                  lineHeight: 1.5, textAlign: "center", justifyContent: "center",
+                }}>
+                  Broma para tu amigo rival: saldrá con la camiseta {opcionActual.club}. Si no quiere posar, sube una foto suya de tu galería.
+                </div>
+                <button className="btn btn-primary btn-block" style={{ marginBottom: 12 }}
+                  onClick={() => { prepararAudio(); fileRefIAGaleria.current?.click(); }}>
+                  Elegir de galería
+                </button>
+                <button className="btn btn-ghost btn-block"
+                  onClick={() => { prepararAudio(); fileRefIACamara.current?.click(); }}>
+                  Tomar foto ahora
+                </button>
+              </>
+            ) : (
+              <>
+                {consejoSelfie}
+                <button className="btn btn-primary btn-block" style={{ marginBottom: 12 }}
+                  onClick={() => { prepararAudio(); fileRefIACamara.current?.click(); }}>
+                  Tomar foto ahora
+                </button>
+                <button className="btn btn-ghost btn-block"
+                  onClick={() => { prepararAudio(); fileRefIAGaleria.current?.click(); }}>
+                  Elegir de galería
+                </button>
+              </>
+            )}
             <button className="btn btn-ghost btn-block" style={{ marginTop: 20 }} onClick={volverAlCatalogo}>
-              {esSoloEspecial || destinoFunfotoRef.current === MODO_ESPECIAL ? "Volver" : "Volver al catálogo"}
+              {esSoloEspecial || destinoFunfotoRef.current === MODO_ESPECIAL || opcionActual ? "Volver" : "Volver al catálogo"}
             </button>
             <Banner />
           </div>
