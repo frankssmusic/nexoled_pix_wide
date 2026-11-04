@@ -28,6 +28,7 @@ const COLUMNAS_EVENTO_PUBLICAS = [
   "created_at",
   "contenido_ia",
   "especial_label",
+  "modo_ninos",
 ].join(", ");
 
 // Vistas que no cargan un evento público al entrar.
