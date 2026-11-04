@@ -18,6 +18,10 @@
 //   evento. Pro -> Flare, Premium -> GPT Image 2. Si el evento quedara en
 //   Base, se usa Flare (el Especial parte desde Pro).
 //   Orden de imagenes: selfie, ref 1, ref 2.
+// - MODOS NIÑO (ids k_...): SIEMPRE usan Flare, en cualquier tier. Solo se
+//   permiten si el evento tiene modo_ninos activado.
+// - DIVERTIDOS DE NIÑOS (cabezones, cara_aplastada, chimuela_cachetona):
+//   en eventos con modo_ninos van libres en cualquier tier y usan Flare.
 // - Simpsons y Barbie SIEMPRE usan Seedream 4.5.
 // - Futbol Fan Argentina (futbol_fan_4) SIEMPRE usa Seedream 5.0.
 // - Futbol Pasion (futbol_pasion) e Hincha Rival (hincha_rival_u,
@@ -37,9 +41,13 @@
 // - Una sola cuota sumada para todo (grilla y Especial), en eventos.ia_usadas.
 // - Antes de llamar a WaveSpeed se RESERVA el cupo con reservar_foto_ia.
 // - Si WaveSpeed rechaza la tarea, se devuelve el cupo con liberar_foto_ia.
+//
+// REINTENTOS (Nov 2026): el Asistente puede reintentar solo cuando el filtro
+// de contenido marca la foto. Manda "intento" (1, 2 o 3) para el log.
 
 const { createClient } = require('@supabase/supabase-js');
 const { getPromptAleatorio, DOMINIO_BASE } = require('../lib/prompts');
+const { MODOS_NINOS } = require('../lib/promptsNinos');
 
 // ---------------------------------------------------------------------------
 // Configuracion de motores: endpoint + body especifico de cada uno.
@@ -119,6 +127,10 @@ const MODOS_DIVERTIDOS = [
   'cara_aplastada',
 ];
 
+// Divertidos que se muestran en el modo niños: libres en cualquier tier
+// cuando el evento tiene modo_ninos, y siempre en Flare.
+const DIVERTIDOS_NINOS = ['cabezones', 'cara_aplastada', 'chimuela_cachetona'];
+
 // Los Divertidos mantienen el encuadre de la foto original. Si la foto es
 // horizontal, la IA rellenaba con blanco lo que faltaba para el formato 9:16.
 // Esta instruccion se suma al final de todos los prompts Divertidos.
@@ -134,6 +146,7 @@ const MENSAJE_CUOTA_AGOTADA =
 const MENSAJE_ESPECIAL_NO_ACTIVO = 'El Especial no está disponible en este evento';
 const MENSAJE_ESPECIAL_SIN_PROMPT = 'El Especial de este evento no está disponible todavía. Avisa al organizador.';
 const MENSAJE_SOLO_ESPECIAL = 'Este modo no está disponible en este evento';
+const MENSAJE_NINOS_NO_ACTIVO = 'Este modo no está disponible en este evento';
 // Debe contener "plan premium" para que el Asistente no muestre "Intentar de nuevo".
 const MENSAJE_DIVERTIDOS_BLOQUEADOS = 'Este modo solo está disponible en el plan Pro o en el plan premium';
 
@@ -142,10 +155,16 @@ function tierDelEvento(motorIa) {
   return MOTOR_POR_TIER[motorIa] ? motorIa : 'base';
 }
 
-// Decide que motor usar segun el modo pedido y el tier contratado.
-function resolverMotor(modo, tier) {
+// Decide que motor usar segun el modo pedido, el tier y si es evento de niños.
+function resolverMotor(modo, tier, eventoNinos) {
   if (modo === MODO_ESPECIAL) {
     return tier === 'premium' ? 'gpt_image_medium' : 'gpt_image_flare';
+  }
+  if (MODOS_NINOS.includes(modo)) {
+    return 'gpt_image_flare';
+  }
+  if (eventoNinos && DIVERTIDOS_NINOS.includes(modo)) {
+    return 'gpt_image_flare';
   }
   if (MODOS_FIJOS_SEEDREAM_45.includes(modo)) {
     return 'seedream_4_5';
@@ -173,6 +192,7 @@ module.exports = async function handler(req, res) {
   }
 
   const { fotoUrl, modo, eventoId } = req.body || {};
+  const intento = Number(req.body?.intento) || 1;
 
   if (!fotoUrl || !modo || !eventoId) {
     return res.status(400).json({
@@ -181,6 +201,7 @@ module.exports = async function handler(req, res) {
   }
 
   const esEspecial = modo === MODO_ESPECIAL;
+  const esModoNino = MODOS_NINOS.includes(modo);
 
   // Para los modos de la grilla, el prompt sale del catalogo (lib/prompts.js).
   let prompt = null;
@@ -212,7 +233,7 @@ module.exports = async function handler(req, res) {
   // ---------------------------------------------------------------------
   const { data: evento, error: errorEvento } = await supabase
     .from('eventos')
-    .select('ia_habilitada, motor_ia, contenido_ia, especial_prompt, especial_ref_url, especial_ref_url_2')
+    .select('ia_habilitada, motor_ia, contenido_ia, especial_prompt, especial_ref_url, especial_ref_url_2, modo_ninos')
     .eq('id', eventoId)
     .single();
 
@@ -229,6 +250,7 @@ module.exports = async function handler(req, res) {
 
   const tier = tierDelEvento(evento.motor_ia);
   const contenido = evento.contenido_ia || 'grilla';
+  const eventoNinos = evento.modo_ninos === true;
 
   if (esEspecial) {
     if (contenido === 'grilla') {
@@ -243,8 +265,19 @@ module.exports = async function handler(req, res) {
     return res.status(403).json({ error: MENSAJE_SOLO_ESPECIAL });
   }
 
-  // Los modos DIVERTIDOS solo estan incluidos en Pro y Premium.
-  if (MODOS_DIVERTIDOS.includes(modo) && !TIERS_CON_DIVERTIDOS.includes(tier)) {
+  // Los modos niño solo funcionan en eventos con modo_ninos activado.
+  if (esModoNino && !eventoNinos) {
+    return res.status(403).json({ error: MENSAJE_NINOS_NO_ACTIVO });
+  }
+
+  // Los modos DIVERTIDOS solo estan incluidos en Pro y Premium,
+  // salvo los Divertidos de niños en eventos con modo_ninos.
+  const divertidoLibrePorNinos = eventoNinos && DIVERTIDOS_NINOS.includes(modo);
+  if (
+    MODOS_DIVERTIDOS.includes(modo) &&
+    !TIERS_CON_DIVERTIDOS.includes(tier) &&
+    !divertidoLibrePorNinos
+  ) {
     return res.status(403).json({ error: MENSAJE_DIVERTIDOS_BLOQUEADOS });
   }
 
@@ -266,8 +299,12 @@ module.exports = async function handler(req, res) {
 
   // Desde aqui el cupo ya esta descontado. Si algo falla al crear la tarea,
   // se devuelve en el catch.
-  const motorId = resolverMotor(modo, tier);
+  const motorId = resolverMotor(modo, tier, eventoNinos);
   const motor = MOTORES[motorId];
+
+  if (intento > 1) {
+    console.log(`Reintento ${intento} del modo ${modo} (evento ${eventoId})`);
+  }
 
   try {
     const creacion = await fetch(motor.endpoint, {
@@ -297,6 +334,7 @@ module.exports = async function handler(req, res) {
       modo,
       eventoId,
       motorUsado: motorId,
+      intento,
     });
   } catch (error) {
     console.error('Error en generarFoto:', error);

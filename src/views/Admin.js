@@ -926,7 +926,9 @@ export default function Admin() {
             const tierEv = tierNormalizado(ev.motor_ia);
             const contenidoEv = ev.contenido_ia || "grilla";
             const tieneEspecial = tieneEspecialContenido(contenidoEv);
-            const tierCot = tierConEspecial(tierEv, tieneEspecial);
+            const esNinos = ev.modo_ninos === true;
+            // Los modos niño usan Flare: un evento Base con modo niños se cotiza como Pro.
+            const tierCot = tierConEspecial(tierEv, tieneEspecial || esNinos);
 
             const planVista = planPorId(camposEd.plan ?? ev.cuota_plan);
             const planGuardado = planPorId(ev.cuota_plan);
@@ -960,6 +962,11 @@ export default function Admin() {
                       {tieneEspecial && (
                         <span className="chip" style={{ color: "#fff", borderColor: "var(--magenta)", background: "rgba(var(--magenta-rgb),0.18)" }}>
                           {contenidoEv === "solo_especial" ? "Solo Especial" : "Especial"}
+                        </span>
+                      )}
+                      {esNinos && (
+                        <span className="chip" style={{ color: "var(--warn)", borderColor: "var(--warn)" }}>
+                          Niños
                         </span>
                       )}
                       <span className="chip">{planGuardado.nombre}</span>
@@ -1252,6 +1259,17 @@ export default function Admin() {
                         activo={ev.ia_habilitada !== false}
                         onToggle={() => actualizar(ev, { ia_habilitada: ev.ia_habilitada === false },
                           ev.ia_habilitada === false ? "IA activada" : "IA desactivada")}
+                      />
+
+                      {/* --- Interruptor de Modo niños --- */}
+                      <Fila
+                        titulo="Modo niños"
+                        detalle={esNinos
+                          ? "Activado: los invitados ven el catálogo de niños (siempre en Flare)"
+                          : "Desactivado: los invitados ven el catálogo de adultos"}
+                        activo={esNinos}
+                        onToggle={() => actualizar(ev, { modo_ninos: !esNinos },
+                          esNinos ? "Modo niños desactivado" : "Modo niños activado")}
                       />
                     </div>
 

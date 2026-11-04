@@ -11,6 +11,10 @@
 // (descargar la imagen, subirla a Supabase, crear el registro en `fotos`)
 // y devolvemos { listo: true, foto }.
 //
+// Si WaveSpeed responde "failed" (por ejemplo, el filtro de contenido marcó
+// la foto) -> se DEVUELVE el cupo reservado y se responde con
+// codigo: 'FALLO_IA', para que el Asistente reintente solo.
+//
 // COSTOS (Oct 2026): el costo por foto se lee de la tabla `configuracion`
 // (precios editables desde el Admin). Si no se puede leer, usa los de respaldo.
 // Tiers: base (Seedream), pro (GPT Image 2.5 Flare), premium (GPT Image 2).
@@ -28,6 +32,9 @@ const TIPO_POR_MOTOR = {
   gpt_image_flare: 'pro',
   gpt_image_medium: 'premium',
 };
+
+// Código que el Asistente usa para saber que puede reintentar solo.
+const CODIGO_FALLO_IA = 'FALLO_IA';
 
 // Lee los precios vigentes desde la tabla configuracion.
 async function leerCostos(supabase) {
@@ -49,6 +56,14 @@ async function leerCostos(supabase) {
   }
 }
 
+// Devuelve un cupo reservado. Si falla, solo se registra en el log.
+async function liberarCupo(supabase, eventoId) {
+  const { error } = await supabase.rpc('liberar_foto_ia', { p_evento: eventoId });
+  if (error) {
+    console.error('No se pudo liberar el cupo IA:', error);
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido' });
@@ -61,6 +76,11 @@ module.exports = async function handler(req, res) {
       error: 'Faltan datos: se requiere taskId, modo y eventoId',
     });
   }
+
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_KEY
+  );
 
   try {
     const estado = await fetch(
@@ -76,7 +96,16 @@ module.exports = async function handler(req, res) {
     const status = estadoJson?.data?.status || estadoJson?.status;
 
     if (status === 'failed') {
-      return res.status(500).json({ error: 'WaveSpeed no pudo generar la imagen' });
+      // La IA no generó la foto: se devuelve el cupo para no descontarlo.
+      const motivo = estadoJson?.data?.error || estadoJson?.error || 'sin detalle';
+      console.error(`WaveSpeed falló (modo ${modo}, evento ${eventoId}):`, motivo);
+      await liberarCupo(supabase, eventoId);
+      return res.status(200).json({
+        listo: false,
+        fallo: true,
+        codigo: CODIGO_FALLO_IA,
+        error: 'La IA no pudo generar esta foto',
+      });
     }
 
     if (status !== 'completed' && status !== 'succeeded') {
@@ -95,11 +124,6 @@ module.exports = async function handler(req, res) {
     if (!urlResultado) {
       return res.status(500).json({ error: 'WaveSpeed no devolvió una imagen válida' });
     }
-
-    const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_KEY
-    );
 
     const imagenDescargada = await fetch(urlResultado);
     const imagenBuffer = await imagenDescargada.arrayBuffer();

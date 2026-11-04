@@ -62,6 +62,49 @@ const FILAS_CATALOGO = [
   },
 ];
 
+// MODO NIÑOS (Nov 2026): si el evento tiene modo_ninos, se muestra este
+// catálogo en vez del de adultos. Los ids k_... están en lib/promptsNinos.js.
+// Los Divertidos de niños van sin candado en cualquier plan.
+const FILAS_NINOS = [
+  {
+    id: "ninos_peliculas", titulo: "Películas y series", modos: [
+      { id: "k_spider", nombre: "Spider Kid" },
+      { id: "k_toy", nombre: "Toy Historia" },
+      { id: "k_cars", nombre: "Rayo Mc-Kid" },
+      { id: "k_stitch", nombre: "Amigo Azul" },
+      { id: "k_minions", nombre: "Amigos Amarillos" },
+      { id: "k_paw", nombre: "Patrulla Canina" },
+      { id: "k_kpop", nombre: "Estrellas K-Pop" },
+    ],
+  },
+  {
+    id: "ninos_videojuegos", titulo: "Videojuegos", modos: [
+      { id: "k_mario", nombre: "Super M" },
+      { id: "k_sonic", nombre: "Sonik" },
+      { id: "k_minecraft", nombre: "Mundo de Bloques" },
+      { id: "k_fortnite", nombre: "Batalla Real" },
+      { id: "k_amongus", nombre: "El Impostor" },
+      { id: "k_roblox", nombre: "RoBloMundo" },
+      { id: "k_pokemon", nombre: "Pokemodo" },
+    ],
+  },
+  {
+    id: "ninos_aventuras", titulo: "Aventuras", modos: [
+      { id: "k_astronauta", nombre: "En el Espacio" },
+      { id: "k_pirata", nombre: "Mundo Pirata" },
+      { id: "k_explorador", nombre: "Explorador Jurásico" },
+      { id: "k_brainrot", nombre: "Brainrot Italiano" },
+    ],
+  },
+  {
+    id: "ninos_divertidos", titulo: "Divertidos", modos: [
+      { id: "cabezones", nombre: "Cabezones" },
+      { id: "cara_aplastada", nombre: "Gruñón" },
+      { id: "chimuela_cachetona", nombre: "Chimuela Cachetona" },
+    ],
+  },
+];
+
 // Submodos: tarjetas del catálogo que abren una pantalla para elegir una
 // opción antes de la foto. Cada opción es un modo real de lib/prompts.js.
 // La imagen de cada opción es la misma referencia fija que usa la IA.
@@ -119,6 +162,14 @@ const MENSAJE_ERROR_REINTENTABLE =
 // Espera máxima: 90 consultas x 3 segundos = 270 segundos.
 const MAX_CONSULTAS = 90;
 
+// REINTENTO AUTOMÁTICO (Nov 2026): si WaveSpeed falla (por ejemplo, el filtro
+// de contenido marca la foto), api/consultarFoto devuelve este código y
+// devuelve el cupo. El Asistente crea otra tarea con la misma foto, hasta
+// MAX_REINTENTOS_AUTO veces, sin mostrar el error. No cuenta como intento
+// del invitado.
+const CODIGO_FALLO_IA = "FALLO_IA";
+const MAX_REINTENTOS_AUTO = 2;
+
 // Consejos del instructivo. Los emojis van como códigos para que no se
 // corrompan al copiar el archivo. El color usa las variables de la paleta.
 const CONSEJOS_INSTRUCTIVO = [
@@ -174,6 +225,7 @@ export default function Asistente({ evento }) {
   const conDivertidos = TIERS_CON_DIVERTIDOS.includes(evento?.motor_ia);
   const iaActiva = evento?.ia_habilitada !== false;
   const claveInstructivo = evento ? `funfoto_instructivo_${evento.id}` : null;
+  const modoNinos = evento?.modo_ninos === true;
 
   // Contenido IA del evento: grilla / especial_grilla / solo_especial.
   const contenido = evento?.contenido_ia || "grilla";
@@ -182,15 +234,20 @@ export default function Asistente({ evento }) {
   const nombreEspecial = evento?.especial_label || "Especial de la noche";
 
   // Marquesina: solo los modos que el invitado puede usar en este evento.
-  const modosMarquesina = FILAS_CATALOGO
-    .filter((f) => !f.exclusiva || conDivertidos)
-    .flatMap((f) => f.modos);
+  const modosMarquesina = modoNinos
+    ? FILAS_NINOS.flatMap((f) => f.modos)
+    : FILAS_CATALOGO
+      .filter((f) => !f.exclusiva || conDivertidos)
+      .flatMap((f) => f.modos);
 
-  // Catálogo: en Pro y Premium, Divertidos va primero y destacado.
+  // Catálogo de niños: sus propias filas, sin candados.
+  // Adultos: en Pro y Premium, Divertidos va primero y destacado.
   // En Base, Divertidos va al final con candado (para mostrar el upgrade).
-  const filasCatalogo = conDivertidos
-    ? FILAS_CATALOGO
-    : [...FILAS_CATALOGO.filter((f) => !f.exclusiva), ...FILAS_CATALOGO.filter((f) => f.exclusiva)];
+  const filasCatalogo = modoNinos
+    ? FILAS_NINOS
+    : conDivertidos
+      ? FILAS_CATALOGO
+      : [...FILAS_CATALOGO.filter((f) => !f.exclusiva), ...FILAS_CATALOGO.filter((f) => f.exclusiva)];
 
   // Estado de la foto que se le informa al minijuego.
   let estadoFoto = "generando";
@@ -428,6 +485,7 @@ export default function Asistente({ evento }) {
     seguirGenerandoRef.current = true;
 
     try {
+      // La selfie se sube UNA sola vez; los reintentos automáticos la reusan.
       const comprimida = await comprimirImagen(fileAUsar);
       const filenameOriginal = `original_${evento.id}_${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
@@ -439,53 +497,71 @@ export default function Asistente({ evento }) {
         .from("fotos")
         .getPublicUrl(filenameOriginal);
 
-      const respuestaCrear = await fetch("/api/generarFoto", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fotoUrl: urlOriginal.publicUrl,
-          modo: modoAUsar,
-          eventoId: evento.id,
-        }),
-      });
-
-      const resultadoCrear = await respuestaCrear.json();
-
-      if (!respuestaCrear.ok) {
-        throw new Error(resultadoCrear?.error || "Error creando la generación con IA");
-      }
-
-      const { taskId, motorUsado } = resultadoCrear;
-
-      for (let intento = 0; intento < MAX_CONSULTAS; intento++) {
+      // Intento 1 + hasta MAX_REINTENTOS_AUTO reintentos si la IA falla.
+      for (let intentoIA = 1; intentoIA <= 1 + MAX_REINTENTOS_AUTO; intentoIA++) {
         if (!seguirGenerandoRef.current) return;
 
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-
-        const respuestaConsulta = await fetch("/api/consultarFoto", {
+        const respuestaCrear = await fetch("/api/generarFoto", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ taskId, modo: modoAUsar, eventoId: evento.id, motorUsado }),
+          body: JSON.stringify({
+            fotoUrl: urlOriginal.publicUrl,
+            modo: modoAUsar,
+            eventoId: evento.id,
+            intento: intentoIA,
+          }),
         });
 
-        const resultadoConsulta = await respuestaConsulta.json();
+        const resultadoCrear = await respuestaCrear.json();
 
-        if (!respuestaConsulta.ok) {
-          throw new Error(resultadoConsulta?.error || "Error generando la foto con IA");
+        if (!respuestaCrear.ok) {
+          throw new Error(resultadoCrear?.error || "Error creando la generación con IA");
         }
 
-        if (resultadoConsulta.listo) {
-          setUrlResultadoIA(resultadoConsulta?.foto?.url || null);
-          setFotoIdIA(resultadoConsulta?.foto?.id || null);
-          setIntentosIA((n) => n + 1);
-          setIaLista(true);
-          setGenerandoIA(false);
-          avisarFotoLista();
-          return;
+        const { taskId, motorUsado } = resultadoCrear;
+        let falloIA = false;
+
+        for (let consulta = 0; consulta < MAX_CONSULTAS; consulta++) {
+          if (!seguirGenerandoRef.current) return;
+
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+
+          const respuestaConsulta = await fetch("/api/consultarFoto", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ taskId, modo: modoAUsar, eventoId: evento.id, motorUsado }),
+          });
+
+          const resultadoConsulta = await respuestaConsulta.json();
+
+          if (!respuestaConsulta.ok) {
+            throw new Error(resultadoConsulta?.error || "Error generando la foto con IA");
+          }
+
+          // La IA falló: se deja de consultar esta tarea (el cupo ya se devolvió)
+          // y se pasa al siguiente reintento automático.
+          if (resultadoConsulta.codigo === CODIGO_FALLO_IA) {
+            falloIA = true;
+            break;
+          }
+
+          if (resultadoConsulta.listo) {
+            setUrlResultadoIA(resultadoConsulta?.foto?.url || null);
+            setFotoIdIA(resultadoConsulta?.foto?.id || null);
+            setIntentosIA((n) => n + 1);
+            setIaLista(true);
+            setGenerandoIA(false);
+            avisarFotoLista();
+            return;
+          }
+        }
+
+        if (!falloIA) {
+          throw new Error("La generación demoró demasiado, intenta de nuevo");
         }
       }
 
-      throw new Error("La generación demoró demasiado, intenta de nuevo");
+      throw new Error("La IA no pudo generar la foto después de varios intentos");
     } catch (err) {
       if (!seguirGenerandoRef.current) return;
       const textoError = err?.message || "";
