@@ -231,7 +231,8 @@ export default function Asistente({ evento }) {
   const contenido = evento?.contenido_ia || "grilla";
   const esSoloEspecial = contenido === "solo_especial";
   const conEspecialEnGrilla = contenido === "especial_grilla";
-  const nombreEspecial = evento?.especial_label || "Especial de la noche";
+  // En modo niños el Especial es "del día" (cumpleaños infantiles suelen ser de día).
+  const nombreEspecial = evento?.especial_label || (modoNinos ? "Especial del día" : "Especial de la noche");
 
   // Marquesina: solo los modos que el invitado puede usar en este evento.
   const modosMarquesina = modoNinos
@@ -876,7 +877,7 @@ export default function Asistente({ evento }) {
 
                 {conEspecialEnGrilla && (
                   <div style={{ marginTop: 22 }}>
-                    <TarjetaEspecial nombre={nombreEspecial} compacta
+                    <TarjetaEspecial nombre={nombreEspecial} compacta ninos={modoNinos}
                       onClick={() => abrirFunfoto(MODO_ESPECIAL)} />
                   </div>
                 )}
@@ -895,9 +896,9 @@ export default function Asistente({ evento }) {
                   Tu foto <span className="grad-text">especial</span>
                 </h1>
                 <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.55, margin: "0 auto 22px", maxWidth: 320 }}>
-                  Toma una selfie y la IA crea tu recuerdo de esta noche.
+                  Toma una selfie y la IA crea tu recuerdo de {modoNinos ? "hoy" : "esta noche"}.
                 </p>
-                <TarjetaEspecial nombre={nombreEspecial} onClick={() => abrirFunfoto(MODO_ESPECIAL)} />
+                <TarjetaEspecial nombre={nombreEspecial} ninos={modoNinos} onClick={() => abrirFunfoto(MODO_ESPECIAL)} />
               </>
             )}
 
@@ -965,7 +966,7 @@ export default function Asistente({ evento }) {
 
             {conEspecialEnGrilla && (
               <div style={{ marginBottom: 22 }}>
-                <TarjetaEspecial nombre={nombreEspecial} onClick={() => elegirModo(MODO_ESPECIAL)} />
+                <TarjetaEspecial nombre={nombreEspecial} ninos={modoNinos} onClick={() => elegirModo(MODO_ESPECIAL)} />
               </div>
             )}
 
@@ -1721,8 +1722,9 @@ function TarjetaModo({ modo, destacada, bloqueada, onClick }) {
   );
 }
 
-/* Tarjeta destacada del Especial: brillo que pulsa y un destello que la recorre. */
-function TarjetaEspecial({ nombre, onClick, compacta }) {
+/* Tarjeta destacada del Especial: brillo que pulsa y un destello que la recorre.
+   En modo niños dice "del día" / "para hoy" en vez de "de la noche". */
+function TarjetaEspecial({ nombre, onClick, compacta, ninos }) {
   return (
     <button
       onClick={onClick}
@@ -1747,13 +1749,13 @@ function TarjetaEspecial({ nombre, onClick, compacta }) {
         {EMOJI_BRILLO}
       </span>
       <span className="eyebrow" style={{ color: "var(--magenta)", position: "relative" }}>
-        Especial de la noche
+        {ninos ? "Especial del día" : "Especial de la noche"}
       </span>
       <span className="display" style={{ fontSize: compacta ? 21 : 26, color: "#fff", lineHeight: 1.15, position: "relative" }}>
         {nombre}
       </span>
       <span style={{ fontSize: 12.5, color: "var(--text-dim)", position: "relative" }}>
-        Creado exclusivamente para esta noche
+        {ninos ? "Creado exclusivamente para hoy" : "Creado exclusivamente para esta noche"}
       </span>
     </button>
   );
