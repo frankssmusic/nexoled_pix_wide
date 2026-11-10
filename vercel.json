@@ -19,6 +19,15 @@
   "functions": {
     "api/generarFoto.js": {
       "maxDuration": 60
+    },
+    "api/borrarFotosViejas.js": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/borrarFotosViejas",
+      "schedule": "0 8 * * *"
+    }
+  ]
 }
