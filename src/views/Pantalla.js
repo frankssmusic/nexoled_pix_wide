@@ -12,11 +12,27 @@ const DURACION_QR = 6000; // 20% más que antes
 // Con menos de 5, aparece después de que pasan todas.
 const FOTOS_ENTRE_QR = 5;
 
+// Tamaño de la ventana: sirve para saber si la pantalla es vertical (pendón LED)
+// u horizontal (TV/proyector) y acomodar el QR.
+function useVentana() {
+  const leer = () => ({ w: window.innerWidth, h: window.innerHeight });
+  const [v, setV] = useState(leer);
+  useEffect(() => {
+    const f = () => setV(leer());
+    window.addEventListener("resize", f);
+    return () => window.removeEventListener("resize", f);
+  }, []);
+  return v;
+}
+
 export default function Pantalla({ evento: eventoInicial, fotos }) {
   const [evento, setEvento] = useState(eventoInicial);
   const aprobadas = fotos.filter((f) => f.status === "approved");
   const total = aprobadas.length;
   const urlSubida = evento ? urlsDe(evento.slug).subir : "";
+
+  const { w, h } = useVentana();
+  const vertical = h > w;
 
   /* Polling: cada 15s App.js ya refresca las fotos.
      Acá además consultamos el estado del evento para detectar cierre en tiempo real */
@@ -87,6 +103,16 @@ export default function Pantalla({ evento: eventoInicial, fotos }) {
   const verQR = total === 0 || mostrandoQR;
   const fotoActual = total > 0 ? aprobadas[fotoIdx % total] : null;
 
+  /* ---------- Medidas del QR ----------
+     Horizontal: igual que antes (QR a la izquierda, texto a la derecha).
+     Vertical: QR arriba ocupando casi todo el ancho, texto abajo centrado. */
+  const margenV = Math.round(w * 0.05);          // margen lateral en vertical
+  const bordeQR = vertical ? Math.round(w * 0.04) : 18;
+  const tamQR = vertical
+    ? Math.max(120, Math.min(w - margenV * 2 - bordeQR * 2, Math.round(h * 0.5)))
+    : 230;
+  const escala = vertical ? Math.min(1, w / 600) : 1; // achica textos en pantallas angostas
+
   return (
     <div style={{
       position: "fixed", inset: 0, background: "#000",
@@ -97,12 +123,14 @@ export default function Pantalla({ evento: eventoInicial, fotos }) {
         height: 54, flexShrink: 0, background: "#000",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 24px",
+        padding: vertical ? "0 10px" : "0 24px", gap: 8,
       }}>
         <Logo size={16} sub={false} />
-        <div className="display" style={{ fontSize: 13, color: "var(--text-dim)", letterSpacing: "0.02em" }}>
-          {evento.nombre}
-        </div>
+        {!vertical && (
+          <div className="display" style={{ fontSize: 13, color: "var(--text-dim)", letterSpacing: "0.02em" }}>
+            {evento.nombre}
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span className="dot dot-live" />
           <span className="eyebrow" style={{ fontSize: 10 }}>
@@ -119,28 +147,45 @@ export default function Pantalla({ evento: eventoInicial, fotos }) {
         {verQR ? (
           <div className="rise" style={{
             display: "flex", alignItems: "center", justifyContent: "center",
-            gap: 56, width: "100%", height: "100%", padding: 40,
+            flexDirection: vertical ? "column" : "row",
+            gap: vertical ? Math.round(h * 0.03) : 56,
+            width: "100%", height: "100%",
+            padding: vertical ? margenV : 40,
+            boxSizing: "border-box",
           }}>
             <div style={{
-              background: "#fff", padding: 18, borderRadius: 18,
+              background: "#fff", padding: bordeQR, borderRadius: vertical ? 12 : 18,
               boxShadow: "0 0 60px rgba(var(--cyan-rgb),0.25)", flexShrink: 0,
             }}>
-              <QRCodeSVG value={urlSubida} size={230} bgColor="#ffffff" fgColor="#0a0a0f" level="H" />
+              <QRCodeSVG value={urlSubida} size={tamQR} bgColor="#ffffff" fgColor="#0a0a0f" level="H" />
             </div>
-            <div style={{ textAlign: "left" }}>
+            <div style={{ textAlign: vertical ? "center" : "left", maxWidth: "100%" }}>
               {/* Logo grande con el degradado de la marca: es el protagonista */}
-              <div style={{ marginBottom: 20 }}>
-                <Logo size={44} sub={false} degradado />
+              <div style={{
+                marginBottom: Math.round(20 * escala),
+                display: "flex", justifyContent: vertical ? "center" : "flex-start",
+              }}>
+                <Logo size={Math.round(44 * escala)} sub={false} degradado />
               </div>
               {/* Misma fuente del logo, en blanco y un poco más chica */}
               <div className="display" style={{
-                fontSize: 40, lineHeight: 1.05, marginBottom: 16, color: "var(--text)",
+                fontSize: Math.round(40 * escala), lineHeight: 1.05,
+                marginBottom: Math.round(16 * escala), color: "var(--text)",
               }}>
                 Sube tu foto
               </div>
-              <div style={{ fontSize: 19, color: "var(--text-dim)", lineHeight: 1.5 }}>
+              <div style={{ fontSize: Math.max(13, Math.round(19 * escala)), color: "var(--text-dim)", lineHeight: 1.5 }}>
                 Escanea el código y aparece en esta pantalla.
               </div>
+              {vertical && (
+                <div className="display" style={{
+                  marginTop: Math.round(h * 0.03),
+                  fontSize: Math.max(12, Math.round(18 * escala)),
+                  color: "var(--text-dim)", lineHeight: 1.25,
+                }}>
+                  {evento.nombre}
+                </div>
+              )}
             </div>
           </div>
         ) : (
